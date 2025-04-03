@@ -1,6 +1,8 @@
 use bevy::prelude::*;
-use std::time::Duration;
 
+use crate::animations::{
+    AnimationController, AnimationData, CharacterAnimations, CharacterState, CurrentAnimation,
+};
 use crate::resolution;
 
 // Plugin principal del jugador
@@ -8,19 +10,10 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_player).add_systems(
-            Update,
-            (
-                process_player_input,
-                update_animation_state,
-                animate_current_state,
-            )
-                .chain(),
-        );
+        app.add_systems(Startup, setup_player)
+            .add_systems(Update, process_player_input);
     }
 }
-
-// ------ COMPONENTES ------
 
 // Componente de estadísticas del jugador
 #[derive(Component)]
@@ -31,195 +24,83 @@ pub struct Player {
     pub attack: f32,
     pub defense: f32,
     pub speed: f32,
+    pub facing_right: bool,
 }
 
-// Estado del personaje
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CharacterState {
-    Idle,
-    Attacking,
-    // Puedes agregar fácilmente más estados:
-    // Walking,
-    // Jumping,
-    // TakingDamage,
-    // etc.
-}
-
-// Componente para administrar las animaciones
-#[derive(Component)]
-pub struct AnimationController {
-    // Estado actual del personaje
-    current_state: CharacterState,
-    // Estado a cambiar en el próximo frame (útil para transiciones)
-    next_state: Option<CharacterState>,
-}
-
-impl Default for AnimationController {
-    fn default() -> Self {
-        Self {
-            current_state: CharacterState::Idle,
-            next_state: None,
-        }
-    }
-}
-
-impl AnimationController {
-    pub fn change_state(&mut self, new_state: CharacterState) {
-        if self.current_state != new_state {
-            self.next_state = Some(new_state);
-        }
-    }
-
-    pub fn apply_next_state(&mut self) -> bool {
-        if let Some(next) = self.next_state.take() {
-            self.current_state = next;
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn get_current_state(&self) -> CharacterState {
-        self.current_state
-    }
-}
-
-// Componente que contiene todas las animaciones disponibles
-#[derive(Component)]
-pub struct CharacterAnimations {
-    animations: Vec<AnimationData>,
-}
-
-// Datos de una animación específica
-#[derive(Clone)]
-pub struct AnimationData {
-    state: CharacterState,
-    texture: Handle<Image>,
-    atlas_layout: Handle<TextureAtlasLayout>,
-    frames: usize,
-    fps: f32,
-    looping: bool,
-}
-
-// Componente para la animación actual
-#[derive(Component)]
-pub struct CurrentAnimation {
-    current_frame: usize,
-    timer: Timer,
-    total_frames: usize,
-    looping: bool,
-}
-
-// ------ SISTEMAS ------
-
-// Sistema que procesa la entrada del jugador
 fn process_player_input(
     keyboard: Res<ButtonInput<KeyCode>>,
-    mut query: Query<&mut AnimationController, With<Player>>,
-) {
-    for mut controller in &mut query {
-        // Solo cambiar a atacar si estamos en idle
-        if keyboard.just_pressed(KeyCode::Space)
-            && controller.get_current_state() == CharacterState::Idle
-        {
-            controller.change_state(CharacterState::Attacking);
-        }
-    }
-}
-
-// Sistema que actualiza el estado de animación
-fn update_animation_state(
-    mut commands: Commands,
-    mut query: Query<(
-        Entity,
-        &mut AnimationController,
-        &CharacterAnimations,
-        &mut CurrentAnimation,
-        &mut Sprite,
-    )>,
-) {
-    for (entity, mut controller, animations, mut current_animation, mut sprite) in &mut query {
-        // Si hay un cambio de estado pendiente
-        if controller.apply_next_state() {
-            let current_state = controller.get_current_state();
-
-            // Buscar la animación correspondiente al nuevo estado
-            if let Some(animation_data) = animations
-                .animations
-                .iter()
-                .find(|anim| anim.state == current_state)
-            {
-                // Actualizar sprite y animación
-                sprite.image = animation_data.texture.clone();
-                sprite.texture_atlas = Some(TextureAtlas {
-                    layout: animation_data.atlas_layout.clone(),
-                    index: 0,
-                });
-
-                // Configurar la nueva animación
-                *current_animation = CurrentAnimation {
-                    current_frame: 0,
-                    timer: Timer::from_seconds(1.0 / animation_data.fps, TimerMode::Repeating),
-                    total_frames: animation_data.frames,
-                    looping: animation_data.looping,
-                };
-            }
-        }
-    }
-}
-
-// Sistema que anima el sprite según el estado actual
-fn animate_current_state(
     time: Res<Time>,
-    mut query: Query<(&mut CurrentAnimation, &mut AnimationController, &mut Sprite)>,
+    mut query: Query<(&mut AnimationController, &mut Player, &mut Transform), With<Player>>,
 ) {
-    for (mut animation, mut controller, mut sprite) in &mut query {
-        // Actualizar el timer de la animación
-        animation.timer.tick(time.delta());
+    for (mut animation_controller, mut player, mut transform) in &mut query {
+        if keyboard.just_pressed(KeyCode::Space)
+            && animation_controller.get_current_state() != CharacterState::Attacking
+        {
+            animation_controller.change_state(CharacterState::Attacking);
+        }
 
-        if animation.timer.just_finished() {
-            if let Some(atlas) = &mut sprite.texture_atlas {
-                // Avanzar al siguiente frame
-                animation.current_frame += 1;
+        if keyboard.just_pressed(KeyCode::KeyV)
+            && animation_controller.get_current_state() != CharacterState::ChargeAttacking
+        {
+            animation_controller.change_state(CharacterState::ChargeAttacking);
+        }
 
-                // Verificar si la animación ha terminado
-                if animation.current_frame >= animation.total_frames {
-                    if animation.looping {
-                        // Reiniciar la animación si es cíclica (como idle)
-                        animation.current_frame = 0;
-                    } else {
-                        // Si no es cíclica (como ataque), volver a idle
-                        animation.current_frame = animation.total_frames - 1;
-                        if controller.get_current_state() == CharacterState::Attacking {
-                            controller.change_state(CharacterState::Idle);
-                        }
-                    }
-                }
+        // Manejar dirección y movimiento
+        let mut is_running = false;
 
-                // Actualizar el índice del atlas
-                atlas.index = animation.current_frame;
-            }
+        // Manejar movimiento a la derecha
+        if keyboard.pressed(KeyCode::ArrowRight) {
+            animation_controller.change_state(CharacterState::Running);
+            player.facing_right = true;
+            is_running = true;
+            // Aplicar movimiento a la derecha
+            transform.translation.x += player.speed * time.delta_secs();
+            println!("{}", transform.translation.x);
+        }
+
+        // Manejar movimiento a la izquierda
+        if keyboard.pressed(KeyCode::ArrowLeft) {
+            animation_controller.change_state(CharacterState::Running);
+            player.facing_right = false;
+            is_running = true;
+            // Aplicar movimiento a la izquierda
+            transform.translation.x -= player.speed * time.delta_secs();
+            println!("{}", transform.translation.x);
+        }
+
+        // Actualizar la escala para voltear el sprite según la dirección
+        let scale_x = transform.scale.x.abs() * if player.facing_right { 1.0 } else { -1.0 };
+        transform.scale.x = scale_x;
+
+        // Volver a estado idle si no está corriendo
+        if !is_running && animation_controller.get_current_state() == CharacterState::Running {
+            animation_controller.change_state(CharacterState::Idle);
         }
     }
 }
-
 // Configuración inicial del jugador
 fn setup_player(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
-    resolution: Res<resolution::Resolution>,
+    _resolution: Res<resolution::Resolution>,
 ) {
     // Cargar texturas
     let idle_texture = asset_server.load("hero/Idle.png");
     let attack_texture = asset_server.load("hero/Attack1.png");
+    let charge_attack_texture = asset_server.load("hero/Attack2.png");
+    let run_texture = asset_server.load("hero/Run.png");
 
     // Crear layouts de atlas
     let idle_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 11, 1, None, None);
     let attack_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 7, 1, None, None);
+    let charge_attack_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 7, 1, None, None);
+    let run_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 8, 1, None, None);
 
     let idle_atlas_layout = texture_atlas_layouts.add(idle_layout);
     let attack_atlas_layout = texture_atlas_layouts.add(attack_layout);
+    let charge_attack_attlas_layout = texture_atlas_layouts.add(charge_attack_layout);
+    let run_atlas_layout = texture_atlas_layouts.add(run_layout);
 
     // Crear datos de animación
     let animations = CharacterAnimations {
@@ -241,6 +122,22 @@ fn setup_player(
                 frames: 7,
                 fps: 20.0,      // Un poco más rápido que idle
                 looping: false, // La animación de ataque no se repite
+            },
+            AnimationData {
+                state: CharacterState::ChargeAttacking,
+                texture: charge_attack_texture.clone(),
+                atlas_layout: charge_attack_attlas_layout.clone(),
+                frames: 7,
+                fps: 12.0,      // Un poco más rápido que idle
+                looping: false, // La animación de ataque no se repite
+            },
+            AnimationData {
+                state: CharacterState::Running,
+                texture: run_texture.clone(),
+                atlas_layout: run_atlas_layout.clone(),
+                frames: 8,
+                fps: 15.0,
+                looping: true,
             },
         ],
     };
@@ -270,7 +167,8 @@ fn setup_player(
             max_health: 100.0,
             attack: 10.0,
             defense: 5.0,
-            speed: 1.0,
+            speed: 250.0,
+            facing_right: true, // Inicialmente mirando a la derecha
         },
         // Transformación
         Transform::from_scale(Vec3::splat(1.0)),

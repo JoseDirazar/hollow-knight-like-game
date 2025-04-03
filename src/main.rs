@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+pub mod animations;
 pub mod game;
 pub mod player;
 pub mod resolution;
