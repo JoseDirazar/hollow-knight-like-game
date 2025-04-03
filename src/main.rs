@@ -4,6 +4,7 @@ pub mod animations;
 pub mod game;
 pub mod player;
 pub mod resolution;
+pub mod world;
 
 fn main() {
     App::new()
