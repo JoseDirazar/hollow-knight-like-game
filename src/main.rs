@@ -2,9 +2,9 @@ use bevy::prelude::*;
 
 pub mod animations;
 pub mod game;
+pub mod paralax_background;
 pub mod player;
 pub mod resolution;
-pub mod world;
 
 fn main() {
     App::new()
