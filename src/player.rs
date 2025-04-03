@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 
 use crate::resolution;
-use std::time::Duration;
 
 pub struct PlayerPlugin;
 
@@ -9,8 +8,7 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_player)
             .add_systems(Update, animate_sprite)
-            .add_systems(Update, trigger_attack)
-            .add_systems(Update, animate_attack);
+            .add_systems(Update, (trigger_attack, animate_attack).chain());
     }
 }
 
@@ -41,26 +39,36 @@ enum PlayerState {
 
 #[derive(Component)]
 struct AttackAnimation {
-    texture: Handle<Image>,
-    atlas: Handle<TextureAtlasLayout>,
-    frames: usize,
-    frame_timer: Timer,
+    idle_texture: Handle<Image>,
+    idle_atlas: Handle<TextureAtlasLayout>,
+    attack_texture: Handle<Image>,
+    attack_atlas: Handle<TextureAtlasLayout>,
+    current_frame: usize,
+    total_frames: usize,
 }
 
 fn animate_sprite(
     time: Res<Time>,
-    mut query: Query<(&AnimationIndices, &mut AnimationTimer, &mut Sprite)>,
+    mut query: Query<(
+        &AnimationIndices,
+        &mut AnimationTimer,
+        &mut Sprite,
+        &PlayerState,
+    )>,
 ) {
-    for (indices, mut timer, mut sprite) in &mut query {
-        timer.tick(time.delta());
+    for (indices, mut timer, mut sprite, state) in &mut query {
+        // Solo animar el sprite idle cuando estamos en estado Idle
+        if *state == PlayerState::Idle {
+            timer.tick(time.delta());
 
-        if timer.just_finished() {
-            if let Some(atlas) = &mut sprite.texture_atlas {
-                atlas.index = if atlas.index == indices.last {
-                    indices.first
-                } else {
-                    atlas.index + 1
-                };
+            if timer.just_finished() {
+                if let Some(atlas) = &mut sprite.texture_atlas {
+                    atlas.index = if atlas.index == indices.last {
+                        indices.first
+                    } else {
+                        atlas.index + 1
+                    };
+                }
             }
         }
     }
@@ -68,30 +76,40 @@ fn animate_sprite(
 
 fn animate_attack(
     time: Res<Time>,
+    mut commands: Commands,
     mut query: Query<(
+        Entity,
         &mut PlayerState,
         &mut AnimationTimer,
         &mut Sprite,
-        &AttackAnimation,
+        &mut AttackAnimation,
     )>,
 ) {
-    for (mut state, mut timer, mut sprite, attack_animation) in &mut query {
+    for (entity, mut state, mut timer, mut sprite, mut attack_anim) in &mut query {
         if *state == PlayerState::Attacking {
             timer.tick(time.delta());
 
             if timer.just_finished() {
-                if let Some(atlas) = &mut sprite.texture_atlas {
-                    if atlas.index >= attack_animation.frames {
-                        *state = PlayerState::Idle;
-                        sprite.image = attack_animation.texture.clone();
-                        sprite.texture_atlas.as_mut().unwrap().index = 1;
-                        timer.reset();
-                    } else {
-                        atlas.index += 1;
-                        timer.set_duration(Duration::from_secs_f32(
-                            1.0 / attack_animation.frames as f32,
-                        ));
-                        timer.reset();
+                attack_anim.current_frame += 1;
+
+                if attack_anim.current_frame >= attack_anim.total_frames {
+                    // Volver al estado idle cuando la animación de ataque termina
+                    *state = PlayerState::Idle;
+                    attack_anim.current_frame = 0;
+
+                    // Restablecer a la textura y atlas de idle
+                    sprite.image = attack_anim.idle_texture.clone();
+                    sprite.texture_atlas = Some(TextureAtlas {
+                        layout: attack_anim.idle_atlas.clone(),
+                        index: 1, // Usar el primer frame de idle
+                    });
+
+                    // Reiniciar el timer para la animación idle
+                    *timer = AnimationTimer(Timer::from_seconds(0.1, TimerMode::Repeating));
+                } else {
+                    // Avanzar al siguiente frame de ataque
+                    if let Some(atlas) = &mut sprite.texture_atlas {
+                        atlas.index = attack_anim.current_frame;
                     }
                 }
             }
@@ -101,16 +119,28 @@ fn animate_attack(
 
 fn trigger_attack(
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut query: Query<(&mut PlayerState, &mut Sprite, &AttackAnimation)>,
+    mut query: Query<(
+        &mut PlayerState,
+        &mut Sprite,
+        &mut AttackAnimation,
+        &mut AnimationTimer,
+    )>,
 ) {
-    for (mut state, mut sprite, attack_animation) in &mut query {
-        if keyboard_input.just_pressed(KeyCode::Space) {
+    for (mut state, mut sprite, mut attack_anim, mut timer) in &mut query {
+        // Solo activar el ataque si estamos en estado Idle
+        if keyboard_input.just_pressed(KeyCode::Space) && *state == PlayerState::Idle {
             *state = PlayerState::Attacking;
-            sprite.image = attack_animation.texture.clone();
+            attack_anim.current_frame = 0;
+
+            // Cambiar a la textura y atlas de ataque
+            sprite.image = attack_anim.attack_texture.clone();
             sprite.texture_atlas = Some(TextureAtlas {
-                layout: attack_animation.atlas.clone(),
-                index: 1,
+                layout: attack_anim.attack_atlas.clone(),
+                index: 0,
             });
+
+            // Configurar el timer para la animación de ataque
+            *timer = AnimationTimer(Timer::from_seconds(0.05, TimerMode::Repeating));
         }
     }
 }
@@ -122,7 +152,7 @@ fn setup_player(
     resolution: Res<resolution::Resolution>,
 ) {
     let idle_texture = asset_server.load("hero/Idle.png");
-    let attack_texture: Handle<Image> = asset_server.load("hero/Attack1.png");
+    let attack_texture = asset_server.load("hero/Attack1.png");
 
     let idle_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 11, 1, None, None);
     let attack_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 7, 1, None, None);
@@ -134,9 +164,9 @@ fn setup_player(
 
     commands.spawn((
         Sprite::from_atlas_image(
-            idle_texture,
+            idle_texture.clone(),
             TextureAtlas {
-                layout: idle_texture_atlas_layout,
+                layout: idle_texture_atlas_layout.clone(),
                 index: animation_indices.first,
             },
         ),
@@ -153,10 +183,12 @@ fn setup_player(
         AnimationTimer(Timer::from_seconds(0.1, TimerMode::Repeating)),
         PlayerState::Idle,
         AttackAnimation {
-            texture: attack_texture,
-            atlas: attack_texture_atlas_layout,
-            frames: 6,
-            frame_timer: Timer::from_seconds(0.1, TimerMode::Once),
+            idle_texture: idle_texture,
+            idle_atlas: idle_texture_atlas_layout,
+            attack_texture: attack_texture,
+            attack_atlas: attack_texture_atlas_layout,
+            current_frame: 0,
+            total_frames: 7,
         },
     ));
 }
