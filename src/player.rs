@@ -1,17 +1,28 @@
 use bevy::prelude::*;
+use std::time::Duration;
 
 use crate::resolution;
 
+// Plugin principal del jugador
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_player)
-            .add_systems(Update, animate_sprite)
-            .add_systems(Update, (trigger_attack, animate_attack).chain());
+        app.add_systems(Startup, setup_player).add_systems(
+            Update,
+            (
+                process_player_input,
+                update_animation_state,
+                animate_current_state,
+            )
+                .chain(),
+        );
     }
 }
 
+// ------ COMPONENTES ------
+
+// Componente de estadísticas del jugador
 #[derive(Component)]
 pub struct Player {
     pub name: String,
@@ -22,154 +33,237 @@ pub struct Player {
     pub speed: f32,
 }
 
-#[derive(Component)]
-struct AnimationIndices {
-    first: usize,
-    last: usize,
-}
-
-#[derive(Component, Deref, DerefMut)]
-struct AnimationTimer(Timer);
-
-#[derive(Component, PartialEq)]
-enum PlayerState {
+// Estado del personaje
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CharacterState {
     Idle,
     Attacking,
+    // Puedes agregar fácilmente más estados:
+    // Walking,
+    // Jumping,
+    // TakingDamage,
+    // etc.
 }
 
+// Componente para administrar las animaciones
 #[derive(Component)]
-struct AttackAnimation {
-    idle_texture: Handle<Image>,
-    idle_atlas: Handle<TextureAtlasLayout>,
-    attack_texture: Handle<Image>,
-    attack_atlas: Handle<TextureAtlasLayout>,
-    current_frame: usize,
-    total_frames: usize,
+pub struct AnimationController {
+    // Estado actual del personaje
+    current_state: CharacterState,
+    // Estado a cambiar en el próximo frame (útil para transiciones)
+    next_state: Option<CharacterState>,
 }
 
-fn animate_sprite(
-    time: Res<Time>,
-    mut query: Query<(
-        &AnimationIndices,
-        &mut AnimationTimer,
-        &mut Sprite,
-        &PlayerState,
-    )>,
-) {
-    for (indices, mut timer, mut sprite, state) in &mut query {
-        // Solo animar el sprite idle cuando estamos en estado Idle
-        if *state == PlayerState::Idle {
-            timer.tick(time.delta());
-
-            if timer.just_finished() {
-                if let Some(atlas) = &mut sprite.texture_atlas {
-                    atlas.index = if atlas.index == indices.last {
-                        indices.first
-                    } else {
-                        atlas.index + 1
-                    };
-                }
-            }
+impl Default for AnimationController {
+    fn default() -> Self {
+        Self {
+            current_state: CharacterState::Idle,
+            next_state: None,
         }
     }
 }
 
-fn animate_attack(
-    time: Res<Time>,
+impl AnimationController {
+    pub fn change_state(&mut self, new_state: CharacterState) {
+        if self.current_state != new_state {
+            self.next_state = Some(new_state);
+        }
+    }
+
+    pub fn apply_next_state(&mut self) -> bool {
+        if let Some(next) = self.next_state.take() {
+            self.current_state = next;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn get_current_state(&self) -> CharacterState {
+        self.current_state
+    }
+}
+
+// Componente que contiene todas las animaciones disponibles
+#[derive(Component)]
+pub struct CharacterAnimations {
+    animations: Vec<AnimationData>,
+}
+
+// Datos de una animación específica
+#[derive(Clone)]
+pub struct AnimationData {
+    state: CharacterState,
+    texture: Handle<Image>,
+    atlas_layout: Handle<TextureAtlasLayout>,
+    frames: usize,
+    fps: f32,
+    looping: bool,
+}
+
+// Componente para la animación actual
+#[derive(Component)]
+pub struct CurrentAnimation {
+    current_frame: usize,
+    timer: Timer,
+    total_frames: usize,
+    looping: bool,
+}
+
+// ------ SISTEMAS ------
+
+// Sistema que procesa la entrada del jugador
+fn process_player_input(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut query: Query<&mut AnimationController, With<Player>>,
+) {
+    for mut controller in &mut query {
+        // Solo cambiar a atacar si estamos en idle
+        if keyboard.just_pressed(KeyCode::Space)
+            && controller.get_current_state() == CharacterState::Idle
+        {
+            controller.change_state(CharacterState::Attacking);
+        }
+    }
+}
+
+// Sistema que actualiza el estado de animación
+fn update_animation_state(
     mut commands: Commands,
     mut query: Query<(
         Entity,
-        &mut PlayerState,
-        &mut AnimationTimer,
+        &mut AnimationController,
+        &CharacterAnimations,
+        &mut CurrentAnimation,
         &mut Sprite,
-        &mut AttackAnimation,
     )>,
 ) {
-    for (entity, mut state, mut timer, mut sprite, mut attack_anim) in &mut query {
-        if *state == PlayerState::Attacking {
-            timer.tick(time.delta());
+    for (entity, mut controller, animations, mut current_animation, mut sprite) in &mut query {
+        // Si hay un cambio de estado pendiente
+        if controller.apply_next_state() {
+            let current_state = controller.get_current_state();
 
-            if timer.just_finished() {
-                attack_anim.current_frame += 1;
+            // Buscar la animación correspondiente al nuevo estado
+            if let Some(animation_data) = animations
+                .animations
+                .iter()
+                .find(|anim| anim.state == current_state)
+            {
+                // Actualizar sprite y animación
+                sprite.image = animation_data.texture.clone();
+                sprite.texture_atlas = Some(TextureAtlas {
+                    layout: animation_data.atlas_layout.clone(),
+                    index: 0,
+                });
 
-                if attack_anim.current_frame >= attack_anim.total_frames {
-                    // Volver al estado idle cuando la animación de ataque termina
-                    *state = PlayerState::Idle;
-                    attack_anim.current_frame = 0;
-
-                    // Restablecer a la textura y atlas de idle
-                    sprite.image = attack_anim.idle_texture.clone();
-                    sprite.texture_atlas = Some(TextureAtlas {
-                        layout: attack_anim.idle_atlas.clone(),
-                        index: 1, // Usar el primer frame de idle
-                    });
-
-                    // Reiniciar el timer para la animación idle
-                    *timer = AnimationTimer(Timer::from_seconds(0.1, TimerMode::Repeating));
-                } else {
-                    // Avanzar al siguiente frame de ataque
-                    if let Some(atlas) = &mut sprite.texture_atlas {
-                        atlas.index = attack_anim.current_frame;
-                    }
-                }
+                // Configurar la nueva animación
+                *current_animation = CurrentAnimation {
+                    current_frame: 0,
+                    timer: Timer::from_seconds(1.0 / animation_data.fps, TimerMode::Repeating),
+                    total_frames: animation_data.frames,
+                    looping: animation_data.looping,
+                };
             }
         }
     }
 }
 
-fn trigger_attack(
-    keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut query: Query<(
-        &mut PlayerState,
-        &mut Sprite,
-        &mut AttackAnimation,
-        &mut AnimationTimer,
-    )>,
+// Sistema que anima el sprite según el estado actual
+fn animate_current_state(
+    time: Res<Time>,
+    mut query: Query<(&mut CurrentAnimation, &mut AnimationController, &mut Sprite)>,
 ) {
-    for (mut state, mut sprite, mut attack_anim, mut timer) in &mut query {
-        // Solo activar el ataque si estamos en estado Idle
-        if keyboard_input.just_pressed(KeyCode::Space) && *state == PlayerState::Idle {
-            *state = PlayerState::Attacking;
-            attack_anim.current_frame = 0;
+    for (mut animation, mut controller, mut sprite) in &mut query {
+        // Actualizar el timer de la animación
+        animation.timer.tick(time.delta());
 
-            // Cambiar a la textura y atlas de ataque
-            sprite.image = attack_anim.attack_texture.clone();
-            sprite.texture_atlas = Some(TextureAtlas {
-                layout: attack_anim.attack_atlas.clone(),
-                index: 0,
-            });
+        if animation.timer.just_finished() {
+            if let Some(atlas) = &mut sprite.texture_atlas {
+                // Avanzar al siguiente frame
+                animation.current_frame += 1;
 
-            // Configurar el timer para la animación de ataque
-            *timer = AnimationTimer(Timer::from_seconds(0.05, TimerMode::Repeating));
+                // Verificar si la animación ha terminado
+                if animation.current_frame >= animation.total_frames {
+                    if animation.looping {
+                        // Reiniciar la animación si es cíclica (como idle)
+                        animation.current_frame = 0;
+                    } else {
+                        // Si no es cíclica (como ataque), volver a idle
+                        animation.current_frame = animation.total_frames - 1;
+                        if controller.get_current_state() == CharacterState::Attacking {
+                            controller.change_state(CharacterState::Idle);
+                        }
+                    }
+                }
+
+                // Actualizar el índice del atlas
+                atlas.index = animation.current_frame;
+            }
         }
     }
 }
 
+// Configuración inicial del jugador
 fn setup_player(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     resolution: Res<resolution::Resolution>,
 ) {
+    // Cargar texturas
     let idle_texture = asset_server.load("hero/Idle.png");
     let attack_texture = asset_server.load("hero/Attack1.png");
 
+    // Crear layouts de atlas
     let idle_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 11, 1, None, None);
     let attack_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 7, 1, None, None);
 
-    let idle_texture_atlas_layout = texture_atlas_layouts.add(idle_layout);
-    let attack_texture_atlas_layout = texture_atlas_layouts.add(attack_layout);
+    let idle_atlas_layout = texture_atlas_layouts.add(idle_layout);
+    let attack_atlas_layout = texture_atlas_layouts.add(attack_layout);
 
-    let animation_indices = AnimationIndices { first: 1, last: 6 };
+    // Crear datos de animación
+    let animations = CharacterAnimations {
+        animations: vec![
+            // Animación de idle
+            AnimationData {
+                state: CharacterState::Idle,
+                texture: idle_texture.clone(),
+                atlas_layout: idle_atlas_layout.clone(),
+                frames: 11,    // De 1 a 6
+                fps: 10.0,     // 10 frames por segundo
+                looping: true, // La animación idle se repite
+            },
+            // Animación de ataque
+            AnimationData {
+                state: CharacterState::Attacking,
+                texture: attack_texture.clone(),
+                atlas_layout: attack_atlas_layout.clone(),
+                frames: 7,
+                fps: 20.0,      // Un poco más rápido que idle
+                looping: false, // La animación de ataque no se repite
+            },
+        ],
+    };
 
+    // Animación inicial (idle)
+    let initial_animation = CurrentAnimation {
+        current_frame: 0,
+        timer: Timer::from_seconds(0.1, TimerMode::Repeating),
+        total_frames: 6,
+        looping: true,
+    };
+
+    // Crear entidad del jugador
     commands.spawn((
+        // Sprite inicial
         Sprite::from_atlas_image(
-            idle_texture.clone(),
+            idle_texture,
             TextureAtlas {
-                layout: idle_texture_atlas_layout.clone(),
-                index: animation_indices.first,
+                layout: idle_atlas_layout,
+                index: 0,
             },
         ),
+        // Estadísticas del jugador
         Player {
             name: "Hero".to_string(),
             health: 100.0,
@@ -178,17 +272,11 @@ fn setup_player(
             defense: 5.0,
             speed: 1.0,
         },
+        // Transformación
         Transform::from_scale(Vec3::splat(1.0)),
-        animation_indices,
-        AnimationTimer(Timer::from_seconds(0.1, TimerMode::Repeating)),
-        PlayerState::Idle,
-        AttackAnimation {
-            idle_texture: idle_texture,
-            idle_atlas: idle_texture_atlas_layout,
-            attack_texture: attack_texture,
-            attack_atlas: attack_texture_atlas_layout,
-            current_frame: 0,
-            total_frames: 7,
-        },
+        // Componentes de animación
+        AnimationController::default(),
+        animations,
+        initial_animation,
     ));
 }
