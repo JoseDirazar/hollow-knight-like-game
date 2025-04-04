@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, render::view::window};
 
 use crate::resolution;
 
@@ -65,19 +65,31 @@ impl Default for ParallaxSettings {
     }
 }
 
+// fn get_image_size((x: f32, y: f32), resolution: Vec2) -> f32 {
+//     let scale_factor = if resolution.screen_dimensions[0] > resolution.pixel_ratio {
+//         resolution.pixel_ratio / 240.0 // Escalar en base a la altura
+//     } else {
+//         resolution.screen_dimensions[1] / 320.0 // Escalar en base al ancho
+//     };
+//     scale_factor
+// }
+
+fn scale_factor(window_width: f32, sprite_dimensions: Vec2) -> f32 {
+    // Calculate the scale factor based on the sprite dimensions and resolution
+    window_width / sprite_dimensions.x
+}
+
 // Function to set up the parallax background
 fn setup_parallax_background(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     windows: Query<&Window>,
     mut parallax_settings: ResMut<ParallaxSettings>,
-    resolution: Res<resolution::Resolution>,
 ) {
     // Get window dimensions
     let window = windows.single();
     let window_width = window.width();
     let window_height = window.height();
-
     // Calculate the player move boundary in pixels
     parallax_settings.player_move_boundary = window_width * parallax_settings.camera_move_threshold;
 
@@ -95,31 +107,40 @@ fn setup_parallax_background(
     // Layer configuration - define each layer with its image and speed factor
     // Higher speed factor means the layer moves faster (closer to foreground)
     let layers = [
-        ("world/levels/1/1.png", 0.2, -40.0),
-        ("world/levels/1/2.png", 0.3, -30.0),
-        ("world/levels/1/3.png", 0.4, -20.0),
-        ("world/levels/1/4.png", 0.5, -10.0),
-        ("world/levels/1/5.png", 0.7, -5.0),
+        ("world/levels/1/1.png", 0.2, -40.0, Vec2::new(128., 240.)),
+        ("world/levels/1/2.png", 0.3, -30.0, Vec2::new(144., 240.)),
+        ("world/levels/1/3.png", 0.4, -20.0, Vec2::new(160., 240.)),
+        ("world/levels/1/4.png", 0.5, -10.0, Vec2::new(320., 240.)),
+        ("world/levels/1/5.png", 0.7, -5.0, Vec2::new(240., 240.)),
     ];
 
+    let static_background_scale_factor = scale_factor(window_width, Vec2::new(320., 240.));
+    println!(
+        "Static background scale factor: {}",
+        static_background_scale_factor
+    );
     commands.spawn((
         Sprite {
             image: asset_server.load("world/levels/1/0.png"),
             ..default()
         },
         Transform::from_xyz(0.0, 0.0, -100.0).with_scale(Vec3::new(
-            resolution.pixel_ratio * 1.8,
-            resolution.pixel_ratio * 1.8,
+            static_background_scale_factor,
+            static_background_scale_factor,
             1.0,
         )),
         StaticBackground,
     ));
 
     // Spawn each layer
-    for (path, speed_factor, z_value) in layers {
+    for (path, speed_factor, z_value, sprite_dimensions) in layers {
         // Load the texture
         let texture = asset_server.load(path);
-
+        let parallax_background_scale_factor = scale_factor(window_width, sprite_dimensions);
+        println!(
+            "Parallax background scale factor: {}",
+            parallax_background_scale_factor
+        );
         // Each layer is a child of the parallax parent
         commands.entity(parallax_parent).with_children(|parent| {
             // Spawn the main instance of this layer
@@ -129,8 +150,8 @@ fn setup_parallax_background(
                     ..default()
                 },
                 Transform::from_xyz(0.0, 0.0, z_value).with_scale(Vec3::new(
-                    resolution.pixel_ratio,
-                    resolution.pixel_ratio,
+                    parallax_background_scale_factor,
+                    parallax_background_scale_factor,
                     1.0,
                 )),
                 Visibility::default(),
@@ -148,9 +169,9 @@ fn setup_parallax_background(
                     image: texture.clone(),
                     ..default()
                 },
-                Transform::from_xyz(window_width, 0.0, z_value).with_scale(Vec3::new(
-                    resolution.pixel_ratio,
-                    resolution.pixel_ratio,
+                Transform::from_xyz(sprite_dimensions.x, 0.0, z_value).with_scale(Vec3::new(
+                    parallax_background_scale_factor,
+                    parallax_background_scale_factor,
                     1.0,
                 )),
                 Visibility::default(),
@@ -158,7 +179,7 @@ fn setup_parallax_background(
                 ViewVisibility::default(),
                 ParallaxLayer {
                     speed_factor,
-                    base_position: window_width,
+                    base_position: sprite_dimensions.x,
                 },
             ));
 
@@ -168,9 +189,9 @@ fn setup_parallax_background(
                     image: texture,
                     ..default()
                 },
-                Transform::from_xyz(-window_width, 0.0, z_value).with_scale(Vec3::new(
-                    resolution.pixel_ratio,
-                    resolution.pixel_ratio,
+                Transform::from_xyz(-sprite_dimensions.x, 0.0, z_value).with_scale(Vec3::new(
+                    parallax_background_scale_factor,
+                    parallax_background_scale_factor,
                     1.0,
                 )),
                 Visibility::default(),
@@ -178,7 +199,7 @@ fn setup_parallax_background(
                 ViewVisibility::default(),
                 ParallaxLayer {
                     speed_factor,
-                    base_position: -window_width,
+                    base_position: -sprite_dimensions.x,
                 },
             ));
         });
