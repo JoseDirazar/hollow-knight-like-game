@@ -15,6 +15,7 @@ fn main() {
                         title: String::from("Solid Knight"),
                         position: WindowPosition::Centered(MonitorSelection::Primary),
                         resolution: Vec2::new(1024., 900.).into(),
+
                         ..default()
                     }),
                     ..default()

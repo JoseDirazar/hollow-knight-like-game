@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+use crate::resolution;
+
 // Plugin for the parallax background system
 pub struct ParallaxPlugin;
 
@@ -15,6 +17,7 @@ impl Plugin for ParallaxPlugin {
 #[derive(Component)]
 pub struct ParallaxLayer {
     pub speed_factor: f32,
+    pub base_position: f32, // Original position to maintain reference
 }
 
 #[derive(Component)]
@@ -31,7 +34,7 @@ impl Default for ParallaxSettings {
     fn default() -> Self {
         Self {
             camera_move_threshold: 0.25, // 25% from edge
-            player_move_boundary: 0.0,   // Calculated in setup
+            player_move_boundary: 0.,    // Calculated in setup
         }
     }
 }
@@ -42,10 +45,24 @@ fn setup_parallax_background(
     asset_server: Res<AssetServer>,
     windows: Query<&Window>,
     mut parallax_settings: ResMut<ParallaxSettings>,
+    resolution: Res<resolution::Resolution>,
 ) {
     // Get window dimensions
     let window = windows.single();
     let window_width = window.width();
+    let window_height = window.height();
+
+    // commands.spawn((
+    //     Sprite {
+    //         image: asset_server.load("world/levels/1/0.png"),
+    //         ..default()
+    //     },
+    //     Transform::from_xyz(0.0, 0.0, -100.0).with_scale(Vec3::new(
+    //         resolution.pixel_ratio,
+    //         resolution.pixel_ratio,
+    //         1.0,
+    //     )),
+    // ));
 
     // Calculate the player move boundary in pixels
     parallax_settings.player_move_boundary = window_width * parallax_settings.camera_move_threshold;
@@ -55,61 +72,94 @@ fn setup_parallax_background(
         .spawn((
             Transform::default(),
             Visibility::default(),
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
             ParallaxBackground,
         ))
         .id();
 
     // Layer configuration - define each layer with its image and speed factor
-    // Lower speed factor means the layer moves slower (further background)
-    let layers = (0..5)
-        .map(|i| {
-            let path = format!("world/levels/1/{}.png", i);
-            let speed_factor = match i {
-                0 => 0.0, // Furthest background (static)
-                1 => 0.1, // Far mountains
-                2 => 0.2, // Mid-distance elements
-                3 => 0.4, // Closer elements
-                4 => 0.7, // Foreground elements
-                5 => 0.9,
-                _ => 0.0, // Default case (shouldn't happen)
-            };
-            (path, speed_factor)
-        })
-        .collect::<Vec<_>>();
+    // Higher speed factor means the layer moves faster (closer to foreground)
+    let layers = [
+        // Far mountains/moon - moves a bit faster
+        ("world/levels/1/1.png", 0.2, -40.0),
+        // Mid-distance elements
+        ("world/levels/1/2.png", 0.3, -30.0),
+        // Closer elements
+        ("world/levels/1/3.png", 0.4, -20.0),
+        // Foreground elements - moves fastest
+        ("world/levels/1/4.png", 0.5, -10.0),
+        ("world/levels/1/5.png", 0.7, -5.0),
+    ];
 
     // Spawn each layer
-    for (path, speed_factor) in layers {
-        // Load the texture and create the sprite
+    for (path, speed_factor, z_value) in layers {
+        // Load the texture
         let texture = asset_server.load(path);
 
         // Each layer is a child of the parallax parent
         commands.entity(parallax_parent).with_children(|parent| {
-            // Spawn each parallax layer
+            // Spawn the main instance of this layer
             parent.spawn((
                 Sprite {
                     image: texture.clone(),
-                    // Center the sprite
                     ..default()
                 },
-                Transform::from_xyz(0.0, 0.0, speed_factor),
-                ParallaxLayer { speed_factor },
+                Transform::from_xyz(0.0, 0.0, z_value).with_scale(Vec3::new(
+                    resolution.pixel_ratio,
+                    resolution.pixel_ratio,
+                    1.0,
+                )),
+                Visibility::default(),
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
+                ParallaxLayer {
+                    speed_factor,
+                    base_position: 0.0,
+                },
             ));
 
-            // Create a duplicate sprite to the right for seamless scrolling
+            // Spawn duplicate to the right for seamless scrolling
             parent.spawn((
                 Sprite {
                     image: texture.clone(),
-                    // Position to the right of the first sprite
                     ..default()
                 },
-                Transform::from_xyz(window_width, 0.0, -speed_factor),
-                ParallaxLayer { speed_factor },
+                Transform::from_xyz(window_width, 0.0, z_value).with_scale(Vec3::new(
+                    resolution.pixel_ratio,
+                    resolution.pixel_ratio,
+                    1.0,
+                )),
+                Visibility::default(),
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
+                ParallaxLayer {
+                    speed_factor,
+                    base_position: window_width,
+                },
+            ));
+
+            // Spawn duplicate to the left for seamless scrolling
+            parent.spawn((
+                Sprite {
+                    image: texture,
+                    ..default()
+                },
+                Transform::from_xyz(-window_width, 0.0, z_value).with_scale(Vec3::new(
+                    resolution.pixel_ratio,
+                    resolution.pixel_ratio,
+                    1.0,
+                )),
+                Visibility::default(),
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
+                ParallaxLayer {
+                    speed_factor,
+                    base_position: -window_width,
+                },
             ));
         });
     }
-
-    // Initialize the resource if it doesn't exist
-    // commands.insert_resource(ParallaxSettings::default());
 }
 
 // System to update the parallax background based on camera movement
@@ -126,29 +176,18 @@ fn update_parallax_background(
 
         for (mut transform, layer) in parallax_query.iter_mut() {
             // Calculate the relative movement based on speed factor
-            let offset = camera_x * layer.speed_factor;
+            // Higher speed factor = moves more with camera (foreground)
+            let relative_pos = layer.base_position - (camera_x * layer.speed_factor);
 
-            // Get the original x position of this sprite
-            let sprite_index = if transform.translation.x < window_width / 2.0 {
-                0
-            } else {
-                1
-            };
-            let base_x = sprite_index as f32 * window_width;
-
-            // Apply parallax offset
-            let mut new_x = base_x - (offset % window_width);
-
-            // If sprite goes off-screen to the left, wrap it around to the right
-            if new_x < -window_width {
-                new_x += window_width * 2.0;
-            }
-            // If sprite goes off-screen to the right, wrap it around to the left
-            else if new_x > window_width {
-                new_x -= window_width * 2.0;
+            // Wrap around for seamless scrolling
+            let mut wrapped_pos = relative_pos % (window_width * 3.0);
+            if wrapped_pos < -window_width {
+                wrapped_pos += window_width * 3.0;
+            } else if wrapped_pos > window_width * 2.0 {
+                wrapped_pos -= window_width * 3.0;
             }
 
-            transform.translation.x = new_x;
+            transform.translation.x = wrapped_pos;
         }
     }
 }
@@ -189,7 +228,6 @@ fn camera_follow_player(
     }
 }
 
-// Utility function to extend the world based on player position
 pub fn extend_world(
     player_position: Vec3,
     current_world_bounds: (f32, f32),
@@ -256,7 +294,7 @@ pub fn monitor_performance(
 
     // Print debug info if needed
     println!(
-        "FPS: {:.2}, Active layers: {}, Player pos: {:.2}",
-        monitor.fps, monitor.active_layers, monitor.player_position
+        "FPS: {:.2}, Active layers: {}, Player pos: {:.2}, camera_position: {:.2}",
+        monitor.fps, monitor.active_layers, monitor.player_position, monitor.camera_position,
     );
 }
