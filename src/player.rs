@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{animation, prelude::*};
 
 use crate::animations::{
     AnimationController, AnimationData, CharacterAnimations, CharacterState, CurrentAnimation,
@@ -33,14 +33,12 @@ fn process_player_input(
     mut query: Query<(&mut AnimationController, &mut Player, &mut Transform), With<Player>>,
 ) {
     for (mut animation_controller, mut player, mut transform) in &mut query {
-        if keyboard.just_pressed(KeyCode::Space)
-            && animation_controller.get_current_state() != CharacterState::Attacking
-        {
+        let current_state = animation_controller.get_current_state();
+        if keyboard.just_pressed(KeyCode::Space) && current_state != CharacterState::Attacking {
             animation_controller.change_state(CharacterState::Attacking);
         }
 
-        if keyboard.just_pressed(KeyCode::KeyV)
-            && animation_controller.get_current_state() != CharacterState::ChargeAttacking
+        if keyboard.just_pressed(KeyCode::KeyV) && current_state != CharacterState::ChargeAttacking
         {
             animation_controller.change_state(CharacterState::ChargeAttacking);
         }
@@ -49,7 +47,7 @@ fn process_player_input(
         let mut is_running = false;
 
         // Manejar movimiento a la derecha
-        if keyboard.pressed(KeyCode::ArrowRight) {
+        if keyboard.pressed(KeyCode::ArrowRight) && current_state != CharacterState::Attacking {
             animation_controller.change_state(CharacterState::Running);
             player.facing_right = true;
             is_running = true;
@@ -59,7 +57,7 @@ fn process_player_input(
         }
 
         // Manejar movimiento a la izquierda
-        if keyboard.pressed(KeyCode::ArrowLeft) {
+        if keyboard.pressed(KeyCode::ArrowLeft) && current_state != CharacterState::Attacking {
             animation_controller.change_state(CharacterState::Running);
             player.facing_right = false;
             is_running = true;
@@ -73,7 +71,7 @@ fn process_player_input(
         transform.scale.x = scale_x;
 
         // Volver a estado idle si no está corriendo
-        if !is_running && animation_controller.get_current_state() == CharacterState::Running {
+        if !is_running && current_state == CharacterState::Running {
             animation_controller.change_state(CharacterState::Idle);
         }
     }
@@ -83,7 +81,7 @@ fn setup_player(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
-    _resolution: Res<resolution::Resolution>,
+    resolution: Res<resolution::Resolution>,
 ) {
     // Cargar texturas
     let idle_texture = asset_server.load("hero/Idle.png");
@@ -171,7 +169,7 @@ fn setup_player(
             facing_right: true, // Inicialmente mirando a la derecha
         },
         // Transformación
-        Transform::from_scale(Vec3::splat(1.0)),
+        Transform::from_scale(Vec3::splat(resolution.pixel_ratio)),
         // Componentes de animación
         AnimationController::default(),
         animations,
