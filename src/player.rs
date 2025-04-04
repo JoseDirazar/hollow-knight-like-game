@@ -1,4 +1,4 @@
-use bevy::{animation, prelude::*};
+use bevy::prelude::*;
 
 use crate::animations::{
     AnimationController, AnimationData, CharacterAnimations, CharacterState, CurrentAnimation,
