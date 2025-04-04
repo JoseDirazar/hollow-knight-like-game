@@ -9,15 +9,30 @@ impl Plugin for ParallaxPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ParallaxSettings>()
             .add_systems(Startup, setup_parallax_background)
-            .add_systems(
+            // Configurar el orden explícito de ejecución
+            .configure_sets(
                 Update,
                 (
-                    update_parallax_background,
-                    update_static_background,
-                    camera_follow_player,
+                    ParallaxSystems::CameraMovement,
+                    ParallaxSystems::BackgroundUpdate.after(ParallaxSystems::CameraMovement),
                 ),
+            )
+            .add_systems(
+                Update,
+                camera_follow_player.in_set(ParallaxSystems::CameraMovement),
+            )
+            .add_systems(
+                Update,
+                (update_parallax_background, update_static_background)
+                    .in_set(ParallaxSystems::BackgroundUpdate),
             );
     }
+}
+
+#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
+enum ParallaxSystems {
+    CameraMovement,   // Primero mover la cámara
+    BackgroundUpdate, // Luego actualizar el fondo y las capas
 }
 
 // Define the parallax background components
@@ -93,8 +108,8 @@ fn setup_parallax_background(
             ..default()
         },
         Transform::from_xyz(0.0, 0.0, -100.0).with_scale(Vec3::new(
-            resolution.pixel_ratio,
-            resolution.pixel_ratio,
+            resolution.pixel_ratio * 1.8,
+            resolution.pixel_ratio * 1.8,
             1.0,
         )),
         StaticBackground,
@@ -178,10 +193,13 @@ fn update_static_background(
     if let (Ok(mut bg_transform), Ok(camera_transform)) =
         (static_bg_query.get_single_mut(), camera_query.get_single())
     {
-        // Set the background x/y position to match the camera's position
-        // This creates the illusion that it's not moving relative to the camera
+        // Actualizamos directamente a la posición exacta de la cámara
+        // sin ningún tipo de interpolación o efecto suave
         bg_transform.translation.x = camera_transform.translation.x;
         bg_transform.translation.y = camera_transform.translation.y;
+
+        // La z se mantiene según el valor configurado originalmente
+        // para asegurar que esté detrás de todo
     }
 }
 
@@ -231,16 +249,16 @@ fn camera_follow_player(
         let window_width = window.width();
         let half_window = window_width / 2.0;
 
-        // Calculate the threshold positions (25% from each edge)
+        // Calcular los umbrales (25% desde cada borde)
         let left_threshold =
             camera_transform.translation.x - half_window + parallax_settings.player_move_boundary;
         let right_threshold =
             camera_transform.translation.x + half_window - parallax_settings.player_move_boundary;
 
-        // Camera movement speed based on player's speed
+        // Velocidad de movimiento de la cámara basada en la velocidad del jugador
         let camera_speed = 250.0 * time.delta_secs();
 
-        // Check if player is beyond the threshold and move camera accordingly
+        // Comprobar si el jugador está más allá del umbral y mover la cámara en consecuencia
         if player_transform.translation.x < left_threshold && keyboard.pressed(KeyCode::ArrowLeft) {
             camera_transform.translation.x -= camera_speed;
         } else if player_transform.translation.x > right_threshold
@@ -248,6 +266,9 @@ fn camera_follow_player(
         {
             camera_transform.translation.x += camera_speed;
         }
+
+        // Asegurarse de que la cámara se mueva de manera precisa
+        camera_transform.translation.z = camera_transform.translation.z.round();
     }
 }
 

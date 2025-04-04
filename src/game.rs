@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use bevy::sprite::Anchor;
 
 use crate::animations;
 use crate::paralax_background;
