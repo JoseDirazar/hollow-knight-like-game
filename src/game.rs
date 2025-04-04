@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::sprite::Anchor;
 
 use crate::animations;
 use crate::paralax_background;
@@ -23,19 +24,20 @@ impl Plugin for GamePlugin {
 
 fn setup_scene(
     mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    resolution: Res<resolution::Resolution>,
+    // asset_server: Res<AssetServer>,
+    // resolution: Res<resolution::Resolution>,
 ) {
-    commands.spawn((
-        Sprite {
-            image: asset_server.load("world/levels/1/0.png"),
-            ..default()
-        },
-        Transform::from_xyz(0.0, 0.0, -100.0).with_scale(Vec3::new(
-            resolution.pixel_ratio * 2.,
-            resolution.pixel_ratio * 2.,
-            -1.,
-        )),
-    ));
     commands.spawn(Camera2d { ..default() });
+    // commands.spawn((
+    //     Sprite {
+    //         image: asset_server.load("world/levels/1/0.png"),
+    //         anchor: Anchor::TopRight,
+    //         ..default()
+    //     },
+    //     Transform::from_xyz(0.0, 0.0, -100.0).with_scale(Vec3::new(
+    //         resolution.pixel_ratio * 2.,
+    //         resolution.pixel_ratio * 2.,
+    //         -1.,
+    //     )),
+    // ));
 }

@@ -9,7 +9,14 @@ impl Plugin for ParallaxPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ParallaxSettings>()
             .add_systems(Startup, setup_parallax_background)
-            .add_systems(Update, (update_parallax_background, camera_follow_player));
+            .add_systems(
+                Update,
+                (
+                    update_parallax_background,
+                    update_static_background,
+                    camera_follow_player,
+                ),
+            );
     }
 }
 
@@ -22,6 +29,10 @@ pub struct ParallaxLayer {
 
 #[derive(Component)]
 pub struct ParallaxBackground;
+
+// Add this new component to identify the static background
+#[derive(Component)]
+pub struct StaticBackground;
 
 // Resource to store the background state
 #[derive(Resource)]
@@ -52,18 +63,6 @@ fn setup_parallax_background(
     let window_width = window.width();
     let window_height = window.height();
 
-    // commands.spawn((
-    //     Sprite {
-    //         image: asset_server.load("world/levels/1/0.png"),
-    //         ..default()
-    //     },
-    //     Transform::from_xyz(0.0, 0.0, -100.0).with_scale(Vec3::new(
-    //         resolution.pixel_ratio,
-    //         resolution.pixel_ratio,
-    //         1.0,
-    //     )),
-    // ));
-
     // Calculate the player move boundary in pixels
     parallax_settings.player_move_boundary = window_width * parallax_settings.camera_move_threshold;
 
@@ -81,16 +80,25 @@ fn setup_parallax_background(
     // Layer configuration - define each layer with its image and speed factor
     // Higher speed factor means the layer moves faster (closer to foreground)
     let layers = [
-        // Far mountains/moon - moves a bit faster
         ("world/levels/1/1.png", 0.2, -40.0),
-        // Mid-distance elements
         ("world/levels/1/2.png", 0.3, -30.0),
-        // Closer elements
         ("world/levels/1/3.png", 0.4, -20.0),
-        // Foreground elements - moves fastest
         ("world/levels/1/4.png", 0.5, -10.0),
         ("world/levels/1/5.png", 0.7, -5.0),
     ];
+
+    commands.spawn((
+        Sprite {
+            image: asset_server.load("world/levels/1/0.png"),
+            ..default()
+        },
+        Transform::from_xyz(0.0, 0.0, -100.0).with_scale(Vec3::new(
+            resolution.pixel_ratio,
+            resolution.pixel_ratio,
+            1.0,
+        )),
+        StaticBackground,
+    ));
 
     // Spawn each layer
     for (path, speed_factor, z_value) in layers {
@@ -159,6 +167,21 @@ fn setup_parallax_background(
                 },
             ));
         });
+    }
+}
+
+// Add this new system to update the static background position
+fn update_static_background(
+    mut static_bg_query: Query<&mut Transform, With<StaticBackground>>,
+    camera_query: Query<&Transform, (With<Camera2d>, Without<StaticBackground>)>,
+) {
+    if let (Ok(mut bg_transform), Ok(camera_transform)) =
+        (static_bg_query.get_single_mut(), camera_query.get_single())
+    {
+        // Set the background x/y position to match the camera's position
+        // This creates the illusion that it's not moving relative to the camera
+        bg_transform.translation.x = camera_transform.translation.x;
+        bg_transform.translation.y = camera_transform.translation.y;
     }
 }
 
