@@ -27,6 +27,18 @@ pub struct Player {
     pub facing_right: bool,
 }
 
+fn can_move(state: &CharacterState) -> bool {
+    match state {
+        // Lista de estados en los que el personaje NO puede moverse
+        CharacterState::Attacking => false,
+        CharacterState::ChargeAttacking => false,
+        // Agrega cualquier otro estado que deba bloquear el movimiento
+
+        // En cualquier otro estado, el personaje puede moverse
+        _ => true,
+    }
+}
+
 fn process_player_input(
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
@@ -34,6 +46,8 @@ fn process_player_input(
 ) {
     for (mut animation_controller, mut player, mut transform) in &mut query {
         let current_state = animation_controller.get_current_state();
+        let can_move_now = can_move(&current_state);
+
         if keyboard.just_pressed(KeyCode::Space) && current_state != CharacterState::Attacking {
             animation_controller.change_state(CharacterState::Attacking);
         }
@@ -47,7 +61,7 @@ fn process_player_input(
         let mut is_running = false;
 
         // Manejar movimiento a la derecha
-        if keyboard.pressed(KeyCode::ArrowRight) && current_state != CharacterState::Attacking {
+        if keyboard.pressed(KeyCode::ArrowRight) && can_move_now {
             animation_controller.change_state(CharacterState::Running);
             player.facing_right = true;
             is_running = true;
@@ -57,7 +71,7 @@ fn process_player_input(
         }
 
         // Manejar movimiento a la izquierda
-        if keyboard.pressed(KeyCode::ArrowLeft) && current_state != CharacterState::Attacking {
+        if keyboard.pressed(KeyCode::ArrowLeft) && can_move_now {
             animation_controller.change_state(CharacterState::Running);
             player.facing_right = false;
             is_running = true;
