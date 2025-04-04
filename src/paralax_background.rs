@@ -1,6 +1,4 @@
-use bevy::{prelude::*, render::view::window};
-
-use crate::resolution;
+use bevy::prelude::*;
 
 // Plugin for the parallax background system
 pub struct ParallaxPlugin;
@@ -9,7 +7,6 @@ impl Plugin for ParallaxPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ParallaxSettings>()
             .add_systems(Startup, setup_parallax_background)
-            // Configurar el orden explícito de ejecución
             .configure_sets(
                 Update,
                 (
@@ -23,7 +20,10 @@ impl Plugin for ParallaxPlugin {
             )
             .add_systems(
                 Update,
-                (update_parallax_background, update_static_background)
+                (
+                    update_parallax_background_optimized,
+                    update_static_background,
+                )
                     .in_set(ParallaxSystems::BackgroundUpdate),
             );
     }
@@ -31,51 +31,83 @@ impl Plugin for ParallaxPlugin {
 
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
 enum ParallaxSystems {
-    CameraMovement,   // Primero mover la cámara
-    BackgroundUpdate, // Luego actualizar el fondo y las capas
+    CameraMovement,
+    BackgroundUpdate,
 }
 
 // Define the parallax background components
 #[derive(Component)]
 pub struct ParallaxLayer {
     pub speed_factor: f32,
-    pub base_position: f32, // Original position to maintain reference
+    pub sprite_width: f32,       // Width of the sprite
+    pub original_position: Vec3, // Original spawn position
 }
 
 #[derive(Component)]
 pub struct ParallaxBackground;
 
-// Add this new component to identify the static background
 #[derive(Component)]
 pub struct StaticBackground;
 
 // Resource to store the background state
 #[derive(Resource)]
 pub struct ParallaxSettings {
-    pub camera_move_threshold: f32, // Percentage of screen where camera starts moving
-    pub player_move_boundary: f32,  // Boundary distance from edges where player stops moving
+    pub camera_move_threshold: f32,
+    pub player_move_boundary: f32,
+    pub layer_configurations: Vec<LayerConfig>,
+}
+
+// Configuration for each parallax layer
+#[derive(Clone)]
+pub struct LayerConfig {
+    pub path: String,
+    pub speed_factor: f32,
+    pub z_value: f32,
+    pub dimensions: Vec2,
 }
 
 impl Default for ParallaxSettings {
     fn default() -> Self {
         Self {
-            camera_move_threshold: 0.25, // 25% from edge
-            player_move_boundary: 0.,    // Calculated in setup
+            camera_move_threshold: 0.25,
+            player_move_boundary: 0.0,
+            layer_configurations: vec![
+                LayerConfig {
+                    path: "world/levels/1/1.png".to_string(),
+                    speed_factor: 0.2,
+                    z_value: -40.0,
+                    dimensions: Vec2::new(128., 240.),
+                },
+                LayerConfig {
+                    path: "world/levels/1/2.png".to_string(),
+                    speed_factor: 0.3,
+                    z_value: -30.0,
+                    dimensions: Vec2::new(144., 240.),
+                },
+                LayerConfig {
+                    path: "world/levels/1/3.png".to_string(),
+                    speed_factor: 0.4,
+                    z_value: -20.0,
+                    dimensions: Vec2::new(160., 240.),
+                },
+                LayerConfig {
+                    path: "world/levels/1/4.png".to_string(),
+                    speed_factor: 0.5,
+                    z_value: -10.0,
+                    dimensions: Vec2::new(320., 240.),
+                },
+                LayerConfig {
+                    path: "world/levels/1/5.png".to_string(),
+                    speed_factor: 0.7,
+                    z_value: -5.0,
+                    dimensions: Vec2::new(240., 240.),
+                },
+            ],
         }
     }
 }
 
-// fn get_image_size((x: f32, y: f32), resolution: Vec2) -> f32 {
-//     let scale_factor = if resolution.screen_dimensions[0] > resolution.pixel_ratio {
-//         resolution.pixel_ratio / 240.0 // Escalar en base a la altura
-//     } else {
-//         resolution.screen_dimensions[1] / 320.0 // Escalar en base al ancho
-//     };
-//     scale_factor
-// }
-
 fn scale_factor(window_width: f32, sprite_dimensions: Vec2) -> f32 {
-    // Calculate the scale factor based on the sprite dimensions and resolution
     window_width / sprite_dimensions.x
 }
 
@@ -104,16 +136,7 @@ fn setup_parallax_background(
         ))
         .id();
 
-    // Layer configuration - define each layer with its image and speed factor
-    // Higher speed factor means the layer moves faster (closer to foreground)
-    let layers = [
-        ("world/levels/1/1.png", 0.2, -40.0, Vec2::new(128., 240.)),
-        ("world/levels/1/2.png", 0.3, -30.0, Vec2::new(144., 240.)),
-        ("world/levels/1/3.png", 0.4, -20.0, Vec2::new(160., 240.)),
-        ("world/levels/1/4.png", 0.5, -10.0, Vec2::new(320., 240.)),
-        ("world/levels/1/5.png", 0.7, -5.0, Vec2::new(240., 240.)),
-    ];
-
+    // Static background
     let static_background_scale_factor = scale_factor(window_width, Vec2::new(320., 240.));
     println!(
         "Static background scale factor: {}",
@@ -132,81 +155,51 @@ fn setup_parallax_background(
         StaticBackground,
     ));
 
-    // Spawn each layer
-    for (path, speed_factor, z_value, sprite_dimensions) in layers {
+    // Spawn each layer with multiple instances for seamless scrolling
+    for layer_config in parallax_settings.layer_configurations.iter() {
         // Load the texture
-        let texture = asset_server.load(path);
-        let parallax_background_scale_factor = scale_factor(window_width, sprite_dimensions);
+        let texture = asset_server.load(&layer_config.path);
+        let parallax_scale_factor = scale_factor(window_width, layer_config.dimensions);
+
+        // Calculate how many instances we need to cover viewport and some extra for scrolling
+        // We'll cover 3x the screen width to ensure smooth scrolling in both directions
+        let instances_needed = (window_width * 3.0 / layer_config.dimensions.x).ceil() as i32;
+
         println!(
-            "Parallax background scale factor: {}",
-            parallax_background_scale_factor
+            "Layer: {}, Scale: {}, Instances: {}",
+            layer_config.path, parallax_scale_factor, instances_needed
         );
-        // Each layer is a child of the parallax parent
+
         commands.entity(parallax_parent).with_children(|parent| {
-            // Spawn the main instance of this layer
-            parent.spawn((
-                Sprite {
-                    image: texture.clone(),
-                    ..default()
-                },
-                Transform::from_xyz(0.0, 0.0, z_value).with_scale(Vec3::new(
-                    parallax_background_scale_factor,
-                    parallax_background_scale_factor,
-                    1.0,
-                )),
-                Visibility::default(),
-                InheritedVisibility::default(),
-                ViewVisibility::default(),
-                ParallaxLayer {
-                    speed_factor,
-                    base_position: 0.0,
-                },
-            ));
+            // Spawn multiple instances of each layer to cover the screen width and then some
+            for i in -instances_needed..=instances_needed {
+                let x_pos = i as f32 * layer_config.dimensions.x;
 
-            // Spawn duplicate to the right for seamless scrolling
-            parent.spawn((
-                Sprite {
-                    image: texture.clone(),
-                    ..default()
-                },
-                Transform::from_xyz(sprite_dimensions.x, 0.0, z_value).with_scale(Vec3::new(
-                    parallax_background_scale_factor,
-                    parallax_background_scale_factor,
-                    1.0,
-                )),
-                Visibility::default(),
-                InheritedVisibility::default(),
-                ViewVisibility::default(),
-                ParallaxLayer {
-                    speed_factor,
-                    base_position: sprite_dimensions.x,
-                },
-            ));
-
-            // Spawn duplicate to the left for seamless scrolling
-            parent.spawn((
-                Sprite {
-                    image: texture,
-                    ..default()
-                },
-                Transform::from_xyz(-sprite_dimensions.x, 0.0, z_value).with_scale(Vec3::new(
-                    parallax_background_scale_factor,
-                    parallax_background_scale_factor,
-                    1.0,
-                )),
-                Visibility::default(),
-                InheritedVisibility::default(),
-                ViewVisibility::default(),
-                ParallaxLayer {
-                    speed_factor,
-                    base_position: -sprite_dimensions.x,
-                },
-            ));
+                parent.spawn((
+                    Sprite {
+                        image: texture.clone(),
+                        ..default()
+                    },
+                    Transform::from_xyz(x_pos, 0.0, layer_config.z_value).with_scale(Vec3::new(
+                        parallax_scale_factor,
+                        parallax_scale_factor,
+                        1.0,
+                    )),
+                    Visibility::default(),
+                    InheritedVisibility::default(),
+                    ViewVisibility::default(),
+                    ParallaxLayer {
+                        speed_factor: layer_config.speed_factor,
+                        sprite_width: layer_config.dimensions.x,
+                        original_position: Vec3::new(x_pos, 0.0, layer_config.z_value),
+                    },
+                ));
+            }
         });
     }
 }
 
-// Add this new system to update the static background position
+// System to update the static background position
 fn update_static_background(
     mut static_bg_query: Query<&mut Transform, With<StaticBackground>>,
     camera_query: Query<&Transform, (With<Camera2d>, Without<StaticBackground>)>,
@@ -214,42 +207,49 @@ fn update_static_background(
     if let (Ok(mut bg_transform), Ok(camera_transform)) =
         (static_bg_query.get_single_mut(), camera_query.get_single())
     {
-        // Actualizamos directamente a la posición exacta de la cámara
-        // sin ningún tipo de interpolación o efecto suave
         bg_transform.translation.x = camera_transform.translation.x;
         bg_transform.translation.y = camera_transform.translation.y;
-
-        // La z se mantiene según el valor configurado originalmente
-        // para asegurar que esté detrás de todo
     }
 }
 
-// System to update the parallax background based on camera movement
-fn update_parallax_background(
+// Optimized system to update parallax layers with sprite recycling
+fn update_parallax_background_optimized(
     mut parallax_query: Query<(&mut Transform, &ParallaxLayer)>,
     camera_query: Query<&Transform, (With<Camera2d>, Without<ParallaxLayer>)>,
     windows: Query<&Window>,
 ) {
     let window = windows.single();
     let window_width = window.width();
+    let viewport_width = window_width * 1.5; // Extra width to determine when to recycle sprites
 
     if let Ok(camera_transform) = camera_query.get_single() {
         let camera_x = camera_transform.translation.x;
 
         for (mut transform, layer) in parallax_query.iter_mut() {
-            // Calculate the relative movement based on speed factor
-            // Higher speed factor = moves more with camera (foreground)
-            let relative_pos = layer.base_position - (camera_x * layer.speed_factor);
+            // Calculate position based on parallax effect
+            let parallax_offset = camera_x * layer.speed_factor;
+            let relative_pos = transform.translation.x - parallax_offset;
 
-            // Wrap around for seamless scrolling
-            let mut wrapped_pos = relative_pos % (window_width * 3.0);
-            if wrapped_pos < -window_width {
-                wrapped_pos += window_width * 3.0;
-            } else if wrapped_pos > window_width * 2.0 {
-                wrapped_pos -= window_width * 3.0;
+            // Determine if this sprite is too far to the left or right and needs repositioning
+            let distance_from_camera = (transform.translation.x - camera_x).abs();
+
+            if distance_from_camera > viewport_width {
+                // Determine which direction to reposition (left or right)
+                let direction = if transform.translation.x < camera_x {
+                    1.0
+                } else {
+                    -1.0
+                };
+
+                // Calculate number of sprite widths to move (at least 2 to ensure it's offscreen to visible)
+                let repositioned_x = camera_x + (direction * viewport_width * 0.8);
+
+                // Update the sprite position
+                transform.translation.x = repositioned_x;
+            } else {
+                // Apply normal parallax movement
+                transform.translation.x = layer.original_position.x - parallax_offset;
             }
-
-            transform.translation.x = wrapped_pos;
         }
     }
 }
