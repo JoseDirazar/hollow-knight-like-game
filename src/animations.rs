@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{animation, prelude::*};
 
 // Estado del personaje
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -37,7 +37,6 @@ impl AnimationController {
             self.next_state = Some(new_state);
         }
     }
-
     pub fn apply_next_state(&mut self) -> bool {
         if let Some(next) = self.next_state.take() {
             self.current_state = next;
@@ -46,7 +45,6 @@ impl AnimationController {
             false
         }
     }
-
     pub fn get_current_state(&self) -> CharacterState {
         self.current_state
     }
@@ -76,11 +74,11 @@ pub struct CurrentAnimation {
     pub timer: Timer,
     pub total_frames: usize,
     pub looping: bool,
+    pub reverse_direction: bool, // New field to track direction
 }
 
 // Plugin principal de animación
 pub struct AnimationPlugin;
-
 impl Plugin for AnimationPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
@@ -125,6 +123,7 @@ pub fn update_animation_state(
                     timer: Timer::from_seconds(1.0 / animation_data.fps, TimerMode::Repeating),
                     total_frames: animation_data.frames,
                     looping: animation_data.looping,
+                    reverse_direction: false,
                 };
             }
         }
@@ -137,32 +136,41 @@ pub fn animate_current_state(
     mut query: Query<(&mut CurrentAnimation, &mut AnimationController, &mut Sprite)>,
 ) {
     for (mut animation, mut controller, mut sprite) in &mut query {
-        // Actualizar el timer de la animación
+        // Update the animation timer
         animation.timer.tick(time.delta());
 
         if animation.timer.just_finished() {
             if let Some(atlas) = &mut sprite.texture_atlas {
-                // Avanzar al siguiente frame
-                animation.current_frame += 1;
-
-                // Verificar si la animación ha terminado
-                if animation.current_frame >= animation.total_frames {
-                    if animation.looping {
-                        // Reiniciar la animación si es cíclica (como idle)
+                // Determine direction of animation
+                if animation.reverse_direction {
+                    animation.current_frame -= 1;
+                    // If we've reached the first frame, change direction
+                    if animation.current_frame <= 0 {
                         animation.current_frame = 0;
-                    } else {
-                        // Si no es cíclica (como ataque), volver a idle
-                        animation.current_frame = animation.total_frames - 1;
-                        if controller.get_current_state() == CharacterState::Attacking {
-                            controller.change_state(CharacterState::Idle);
-                        }
-                        if controller.get_current_state() == CharacterState::ChargeAttacking {
-                            controller.change_state(CharacterState::Idle);
+                        animation.reverse_direction = false;
+                    }
+                } else {
+                    animation.current_frame += 1;
+                    // If we've reached the last frame
+                    if animation.current_frame >= animation.total_frames {
+                        if animation.looping {
+                            // For ping-pong looping animations like idle
+                            animation.current_frame = animation.total_frames - 1;
+                            animation.reverse_direction = true;
+                        } else {
+                            // For non-looping animations like attacks
+                            animation.current_frame = animation.total_frames - 1;
+                            if controller.get_current_state() == CharacterState::Attacking {
+                                controller.change_state(CharacterState::Idle);
+                            }
+                            if controller.get_current_state() == CharacterState::ChargeAttacking {
+                                controller.change_state(CharacterState::Idle);
+                            }
                         }
                     }
                 }
 
-                // Actualizar el índice del atlas
+                // Update atlas index
                 atlas.index = animation.current_frame;
             }
         }

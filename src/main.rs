@@ -14,8 +14,9 @@ fn main() {
                     primary_window: Some(Window {
                         title: String::from("Solid Knight"),
                         position: WindowPosition::Centered(MonitorSelection::Primary),
-                        resolution: Vec2::new(1024., 768.).into(),
-
+                        resolution: resolution::SCREEN_DIMENSIONS.into(),
+                        mode: bevy::window::WindowMode::Windowed,
+                        resizable: false,
                         ..default()
                     }),
                     ..default()

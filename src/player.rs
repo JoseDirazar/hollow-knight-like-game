@@ -160,6 +160,7 @@ fn setup_player(
         timer: Timer::from_seconds(0.1, TimerMode::Repeating),
         total_frames: 6,
         looping: true,
+        reverse_direction: false,
     };
 
     // Crear entidad del jugador
