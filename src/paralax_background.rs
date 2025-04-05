@@ -74,31 +74,31 @@ impl Default for ParallaxSettings {
             layer_configurations: vec![
                 LayerConfig {
                     path: "world/levels/1/1.png".to_string(),
-                    speed_factor: 0.2,
+                    speed_factor: 0.04,
                     z_value: -40.0,
                     dimensions: Vec2::new(128., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/2.png".to_string(),
-                    speed_factor: 0.3,
+                    speed_factor: 0.08,
                     z_value: -30.0,
                     dimensions: Vec2::new(144., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/3.png".to_string(),
-                    speed_factor: 0.4,
+                    speed_factor: 0.16,
                     z_value: -20.0,
                     dimensions: Vec2::new(160., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/4.png".to_string(),
-                    speed_factor: 0.5,
+                    speed_factor: 0.32,
                     z_value: -10.0,
                     dimensions: Vec2::new(320., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/5.png".to_string(),
-                    speed_factor: 0.7,
+                    speed_factor: 0.64,
                     z_value: -5.0,
                     dimensions: Vec2::new(240., 240.),
                 },
@@ -126,20 +126,24 @@ fn setup_parallax_background(
     parallax_settings.player_move_boundary = window_width * parallax_settings.camera_move_threshold;
 
     // Create a parent entity for all parallax layers
+    let static_background_scale_factor = scale_factor(window_width, Vec2::new(320., 240.));
     let parallax_parent = commands
         .spawn((
             Transform::default(),
             Visibility::default(),
             InheritedVisibility::default(),
             ViewVisibility::default(),
-            ParallaxBackground,
+            // ParallaxBackground,
         ))
         .id();
 
     // Static background
-    let static_background_scale_factor = scale_factor(window_width, Vec2::new(320., 240.));
     println!(
         "Static background scale factor: {}",
+        static_background_scale_factor
+    );
+    println!(
+        "Static background dimensions: {}",
         static_background_scale_factor
     );
     commands.spawn((
@@ -166,33 +170,37 @@ fn setup_parallax_background(
         let instances_needed = (window_width * 3.0 / layer_config.dimensions.x).ceil() as i32;
 
         println!(
-            "Layer: {}, Scale: {}, Instances: {}",
-            layer_config.path, parallax_scale_factor, instances_needed
+            "Layer: {}, Scale: {}, Instances: {} dinensionsX: {}",
+            layer_config.path, parallax_scale_factor, instances_needed, layer_config.dimensions.x
         );
 
         commands.entity(parallax_parent).with_children(|parent| {
             // Spawn multiple instances of each layer to cover the screen width and then some
             for i in -instances_needed..=instances_needed {
-                let x_pos = i as f32 * layer_config.dimensions.x;
+                let x_pos = (i + 1) as f32 * layer_config.dimensions.x;
 
                 parent.spawn((
                     Sprite {
                         image: texture.clone(),
                         ..default()
                     },
-                    Transform::from_xyz(x_pos, 0.0, layer_config.z_value).with_scale(Vec3::new(
-                        parallax_scale_factor,
-                        parallax_scale_factor,
+                    ParallaxLayer {
+                        speed_factor: layer_config.speed_factor,
+                        sprite_width: layer_config.dimensions.x * static_background_scale_factor,
+                        original_position: Vec3::new(
+                            x_pos * static_background_scale_factor,
+                            0.0,
+                            layer_config.z_value,
+                        ),
+                    },
+                    Transform::from_xyz(x_pos, 0., layer_config.z_value).with_scale(Vec3::new(
+                        static_background_scale_factor,
+                        static_background_scale_factor,
                         1.0,
                     )),
                     Visibility::default(),
                     InheritedVisibility::default(),
                     ViewVisibility::default(),
-                    ParallaxLayer {
-                        speed_factor: layer_config.speed_factor,
-                        sprite_width: layer_config.dimensions.x,
-                        original_position: Vec3::new(x_pos, 0.0, layer_config.z_value),
-                    },
                 ));
             }
         });
