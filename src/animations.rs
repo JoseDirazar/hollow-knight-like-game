@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use std::time::Duration;
 
 // Estado del personaje
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Hash)]
