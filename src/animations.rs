@@ -7,10 +7,8 @@ pub enum CharacterState {
     Attacking,
     ChargeAttacking,
     Running,
-    // Walking,
-    // Jumping,
-    // TakingDamage,
-    // etc.
+    Jumping,    // Nuevo estado para saltar
+    Falling,    // Opcional: estado para caer
 }
 
 // Componente para administrar las animaciones
@@ -65,6 +63,7 @@ pub struct AnimationData {
     pub frames: usize,
     pub fps: f32,
     pub looping: bool,
+    pub ping_pong: bool,
 }
 
 // Componente para la animación actual
@@ -133,16 +132,23 @@ pub fn update_animation_state(
 // Sistema que anima el sprite según el estado actual
 pub fn animate_current_state(
     time: Res<Time>,
-    mut query: Query<(&mut CurrentAnimation, &mut AnimationController, &mut Sprite)>,
+    mut query: Query<(&mut CurrentAnimation, &mut AnimationController, &mut Sprite, &CharacterAnimations)>,
 ) {
-    for (mut animation, mut controller, mut sprite) in &mut query {
+    for (mut animation, mut controller, mut sprite, character_animations) in &mut query {
         // Update the animation timer
         animation.timer.tick(time.delta());
 
         if animation.timer.just_finished() {
             if let Some(atlas) = &mut sprite.texture_atlas {
+                // Buscar la configuración de animación actual
+                let current_state = controller.get_current_state();
+                let current_animation_data = character_animations.animations.iter()
+                    .find(|anim| anim.state == current_state);
+                
+                let ping_pong = current_animation_data.map(|data| data.ping_pong).unwrap_or(false);
+                
                 // Determine direction of animation
-                if animation.reverse_direction {
+                if animation.reverse_direction && ping_pong {
                     animation.current_frame -= 1;
                     // If we've reached the first frame, change direction
                     if animation.current_frame <= 0 {
@@ -154,11 +160,16 @@ pub fn animate_current_state(
                     // If we've reached the last frame
                     if animation.current_frame >= animation.total_frames {
                         if animation.looping {
-                            // For ping-pong looping animations like idle
-                            animation.current_frame = animation.total_frames - 1;
-                            animation.reverse_direction = true;
+                            if ping_pong {
+                                // Para animaciones ping-pong (como idle)
+                                animation.current_frame = animation.total_frames - 1;
+                                animation.reverse_direction = true;
+                            } else {
+                                // Para animaciones de loop regular (como running)
+                                animation.current_frame = 0;
+                            }
                         } else {
-                            // For non-looping animations like attacks
+                            // Para animaciones sin loop (como ataques)
                             animation.current_frame = animation.total_frames - 1;
                             if controller.get_current_state() == CharacterState::Attacking {
                                 controller.change_state(CharacterState::Idle);

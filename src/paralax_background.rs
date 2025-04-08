@@ -137,15 +137,6 @@ fn setup_parallax_background(
         ))
         .id();
 
-    // Static background
-    println!(
-        "Static background scale factor: {}",
-        static_background_scale_factor
-    );
-    println!(
-        "Static background dimensions: {}",
-        static_background_scale_factor
-    );
     commands.spawn((
         Sprite {
             image: asset_server.load("world/levels/1/0.png"),
@@ -169,10 +160,6 @@ fn setup_parallax_background(
         // We'll cover 3x the screen width to ensure smooth scrolling in both directions
         let instances_needed = (window_width * 3.0 / layer_config.dimensions.x).ceil() as i32;
 
-        println!(
-            "Layer: {}, Scale: {}, Instances: {} dinensionsX: {}",
-            layer_config.path, parallax_scale_factor, instances_needed, layer_config.dimensions.x
-        );
 
         commands.entity(parallax_parent).with_children(|parent| {
             // Spawn multiple instances of each layer to cover the screen width and then some
