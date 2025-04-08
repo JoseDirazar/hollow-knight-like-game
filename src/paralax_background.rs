@@ -21,7 +21,7 @@ impl Plugin for ParallaxPlugin {
             .add_systems(
                 Update,
                 (
-                    update_parallax_background_optimized,
+                    update_parallax_background_recycled,
                     update_static_background,
                 )
                     .in_set(ParallaxSystems::BackgroundUpdate),
@@ -41,6 +41,7 @@ pub struct ParallaxLayer {
     pub speed_factor: f32,
     pub sprite_width: f32,       // Width of the sprite
     pub original_position: Vec3, // Original spawn position
+    pub position_index: i32,     // -1 = Left, 0 = Center, 1 = Right
 }
 
 #[derive(Component)]
@@ -74,31 +75,31 @@ impl Default for ParallaxSettings {
             layer_configurations: vec![
                 LayerConfig {
                     path: "world/levels/1/1.png".to_string(),
-                    speed_factor: 0.04,
+                    speed_factor: 0.1,  // Farthest background (nubes) moves very little (5% of camera movement)
                     z_value: -40.0,
                     dimensions: Vec2::new(128., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/2.png".to_string(),
-                    speed_factor: 0.08,
+                    speed_factor: 0.15,  // Distant clouds move slightly (10% of camera movement)
                     z_value: -30.0,
                     dimensions: Vec2::new(144., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/3.png".to_string(),
-                    speed_factor: 0.16,
+                    speed_factor: 0.20,  // Mountains (30% of camera movement)
                     z_value: -20.0,
                     dimensions: Vec2::new(160., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/4.png".to_string(),
-                    speed_factor: 0.32,
+                    speed_factor: 0.25,  // Forest (50% of camera movement)
                     z_value: -10.0,
                     dimensions: Vec2::new(320., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/5.png".to_string(),
-                    speed_factor: 0.64,
+                    speed_factor: 0.30,  // Closest to foreground, moves the most (80% of camera movement)
                     z_value: -5.0,
                     dimensions: Vec2::new(240., 240.),
                 },
@@ -121,7 +122,6 @@ fn setup_parallax_background(
     // Get window dimensions
     let window = windows.single();
     let window_width = window.width();
-    let window_height = window.height();
     // Calculate the player move boundary in pixels
     parallax_settings.player_move_boundary = window_width * parallax_settings.camera_move_threshold;
 
@@ -133,7 +133,7 @@ fn setup_parallax_background(
             Visibility::default(),
             InheritedVisibility::default(),
             ViewVisibility::default(),
-            // ParallaxBackground,
+            ParallaxBackground,
         ))
         .id();
 
@@ -150,21 +150,26 @@ fn setup_parallax_background(
         StaticBackground,
     ));
 
-    // Spawn each layer with multiple instances for seamless scrolling
-    for layer_config in parallax_settings.layer_configurations.iter() {
+    // Spawn each layer with exactly 3 instances (left, center, right)
+    for (layer_index, layer_config) in parallax_settings.layer_configurations.iter().enumerate() {
         // Load the texture
         let texture = asset_server.load(&layer_config.path);
-        let parallax_scale_factor = scale_factor(window_width, layer_config.dimensions);
-
-        // Calculate how many instances we need to cover viewport and some extra for scrolling
-        // We'll cover 3x the screen width to ensure smooth scrolling in both directions
-        let instances_needed = (window_width * 3.0 / layer_config.dimensions.x).ceil() as i32;
-
+        let _parallax_scale_factor = scale_factor(window_width, layer_config.dimensions);
+        
+        // Width of each sprite after scaling
+        let scaled_width = layer_config.dimensions.x * static_background_scale_factor;
 
         commands.entity(parallax_parent).with_children(|parent| {
-            // Spawn multiple instances of each layer to cover the screen width and then some
-            for i in -instances_needed..=instances_needed {
-                let x_pos = (i + 1) as f32 * layer_config.dimensions.x;
+            // Para las capas 0 y 1 (índices 0 y 1, que corresponden a las nubes lejanas)
+            // usamos 5 instancias en lugar de 3 para cubrir mejor la pantalla
+            let instance_range = if layer_index == 0 || layer_index == 1 {
+                -5..=5 // 5 instancias para nubes (-2, -1, 0, 1, 2)
+            } else {
+                -1..=1 // 3 instancias para el resto (-1, 0, 1)
+            };
+            
+            for i in instance_range {
+                let x_pos = i as f32 * scaled_width;
 
                 parent.spawn((
                     Sprite {
@@ -173,12 +178,13 @@ fn setup_parallax_background(
                     },
                     ParallaxLayer {
                         speed_factor: layer_config.speed_factor,
-                        sprite_width: layer_config.dimensions.x * static_background_scale_factor,
+                        sprite_width: scaled_width,
                         original_position: Vec3::new(
-                            x_pos * static_background_scale_factor,
+                            x_pos,
                             0.0,
                             layer_config.z_value,
                         ),
+                        position_index: i,
                     },
                     Transform::from_xyz(x_pos, 0., layer_config.z_value).with_scale(Vec3::new(
                         static_background_scale_factor,
@@ -207,43 +213,111 @@ fn update_static_background(
     }
 }
 
-// Optimized system to update parallax layers with sprite recycling
-fn update_parallax_background_optimized(
-    mut parallax_query: Query<(&mut Transform, &ParallaxLayer)>,
+// New system that uses exactly 3 sprites per layer and recycles them
+fn update_parallax_background_recycled(
+    mut parallax_query: Query<(&mut Transform, &mut ParallaxLayer)>,
     camera_query: Query<&Transform, (With<Camera2d>, Without<ParallaxLayer>)>,
     windows: Query<&Window>,
 ) {
     let window = windows.single();
     let window_width = window.width();
-    let viewport_width = window_width * 1.5; // Extra width to determine when to recycle sprites
-
+    
     if let Ok(camera_transform) = camera_query.get_single() {
         let camera_x = camera_transform.translation.x;
-
-        for (mut transform, layer) in parallax_query.iter_mut() {
+        
+        for (mut transform, mut layer) in parallax_query.iter_mut() {
             // Calculate position based on parallax effect
-            let parallax_offset = camera_x * layer.speed_factor;
-            let relative_pos = transform.translation.x - parallax_offset;
-
-            // Determine if this sprite is too far to the left or right and needs repositioning
-            let distance_from_camera = (transform.translation.x - camera_x).abs();
-
-            if distance_from_camera > viewport_width {
-                // Determine which direction to reposition (left or right)
-                let direction = if transform.translation.x < camera_x {
-                    1.0
+            // Instead of moving the background by the full camera position,
+            // we only move it by a fraction determined by the speed_factor
+            let parallax_offset = camera_x * (1.0 - layer.speed_factor);
+            
+            // Update position to be centered on camera but offset by parallax factor
+            transform.translation.x = layer.original_position.x + parallax_offset;
+            
+            // Check if this sprite is now off-screen
+            let half_window = window_width / 2.0;
+            
+            if transform.translation.x < camera_x - half_window - (layer.sprite_width / 2.0) {
+                // This sprite is off-screen to the left, move it to the right
+                // Determine how many sprite widths to move based on position index range
+                let max_index = if layer.position_index >= -1 && layer.position_index <= 1 {
+                    1 // Capas normales (-1, 0, 1)
                 } else {
-                    -1.0
+                    2 // Capas especiales con 5 instancias (-2, -1, 0, 1, 2)
                 };
-
-                // Calculate number of sprite widths to move (at least 2 to ensure it's offscreen to visible)
-                let repositioned_x = camera_x + (direction * viewport_width * 0.8);
-
-                // Update the sprite position
-                transform.translation.x = repositioned_x;
-            } else {
-                // Apply normal parallax movement
-                transform.translation.x = layer.original_position.x - parallax_offset;
+                
+                // Move to the rightmost position - convertimos a f32 para evitar error de tipo
+                let movement = (2 * max_index + 1) as f32;
+                transform.translation.x += layer.sprite_width * movement;
+                
+                // Update position index
+                // Para las capas con rango -2..=2
+                if max_index == 2 {
+                    if layer.position_index == -2 {
+                        layer.position_index = 2;
+                    } else if layer.position_index == -1 {
+                        layer.position_index = -2;
+                    } else if layer.position_index == 0 {
+                        layer.position_index = -1;
+                    } else if layer.position_index == 1 {
+                        layer.position_index = 0;
+                    } else if layer.position_index == 2 {
+                        layer.position_index = 1;
+                    }
+                } else {
+                    // Para las capas con rango -1..=1
+                    if layer.position_index == -1 {
+                        layer.position_index = 1;
+                    } else if layer.position_index == 0 {
+                        layer.position_index = -1;
+                    } else if layer.position_index == 1 {
+                        layer.position_index = 0;
+                    }
+                }
+                
+                // Update original position
+                layer.original_position.x = transform.translation.x - parallax_offset;
+            } 
+            else if transform.translation.x > camera_x + half_window + (layer.sprite_width / 2.0) {
+                // This sprite is off-screen to the right, move it to the left
+                // Determine how many sprite widths to move based on position index range
+                let max_index = if layer.position_index >= -1 && layer.position_index <= 1 {
+                    1 // Capas normales (-1, 0, 1)
+                } else {
+                    2 // Capas especiales con 5 instancias (-2, -1, 0, 1, 2)
+                };
+                
+                // Move to the leftmost position - convertimos a f32 para evitar error de tipo
+                let movement = (2 * max_index + 1) as f32;
+                transform.translation.x -= layer.sprite_width * movement;
+                
+                // Update position index
+                // Para las capas con rango -2..=2
+                if max_index == 2 {
+                    if layer.position_index == 2 {
+                        layer.position_index = -2;
+                    } else if layer.position_index == 1 {
+                        layer.position_index = 2;
+                    } else if layer.position_index == 0 {
+                        layer.position_index = 1;
+                    } else if layer.position_index == -1 {
+                        layer.position_index = 0;
+                    } else if layer.position_index == -2 {
+                        layer.position_index = -1;
+                    }
+                } else {
+                    // Para las capas con rango -1..=1
+                    if layer.position_index == 1 {
+                        layer.position_index = -1;
+                    } else if layer.position_index == 0 {
+                        layer.position_index = 1;
+                    } else if layer.position_index == -1 {
+                        layer.position_index = 0;
+                    }
+                }
+                
+                // Update original position
+                layer.original_position.x = transform.translation.x - parallax_offset;
             }
         }
     }
