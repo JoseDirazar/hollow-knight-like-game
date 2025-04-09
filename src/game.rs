@@ -1,10 +1,11 @@
 use bevy::prelude::*;
 
 use crate::animations;
+use crate::ground;
 use crate::paralax_background;
+use crate::physics;
 use crate::player;
 use crate::resolution;
-use crate::physics;
 
 pub struct GamePlugin;
 
@@ -16,6 +17,7 @@ impl Plugin for GamePlugin {
             physics::GravityPlugin,
             animations::AnimationPlugin,
             player::PlayerPlugin,
+            ground::GroundPlugin,
         ))
         .add_systems(Startup, setup_scene)
         .insert_resource(paralax_background::ParallaxMonitor::default())

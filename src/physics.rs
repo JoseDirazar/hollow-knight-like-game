@@ -43,11 +43,7 @@ impl Plugin for GravityPlugin {
 }
 
 // Sistema que aplica la gravedad a los objetos con física
-fn apply_gravity(
-    time: Res<Time>,
-    gravity: Res<GravitySettings>,
-    mut query: Query<&mut Physics>,
-) {
+fn apply_gravity(_time: Res<Time>, gravity: Res<GravitySettings>, mut query: Query<&mut Physics>) {
     for mut physics in &mut query {
         if !physics.on_ground {
             // Aplicar aceleración de gravedad
@@ -57,37 +53,34 @@ fn apply_gravity(
 }
 
 // Sistema que actualiza la posición basada en la física
-fn apply_physics(
-    time: Res<Time>,
-    mut query: Query<(&mut Transform, &mut Physics)>,
-) {
+fn apply_physics(time: Res<Time>, mut query: Query<(&mut Transform, &mut Physics)>) {
     let delta = time.delta_secs();
-    
+
     for (mut transform, mut physics) in &mut query {
         // Actualizar velocidad basada en aceleración
         let acceleration = physics.acceleration.clone();
         physics.velocity += acceleration * delta;
-        
+
         // Limitar la velocidad de caída para evitar problemas con colisiones
         if physics.velocity.y < -1000.0 {
             physics.velocity.y = -1000.0;
         }
-        
+
         // Aplicar velocidad a la posición
         transform.translation.x += physics.velocity.x * delta;
         transform.translation.y += physics.velocity.y * delta;
-        
+
         // Reiniciar aceleración después de aplicarla
         physics.acceleration = Vec2::ZERO;
-        
-        // Simulación simple de colisión con el suelo
-        if transform.translation.y <= 0.0 {
-            transform.translation.y = 0.0;
-            physics.velocity.y = 0.0;
-            physics.on_ground = true;
-        } else {
-            physics.on_ground = false;
-        }
+
+        // Ya no necesitamos esta colisión simple con el suelo, ahora se maneja en ground.rs
+        // if transform.translation.y <= 0.0 {
+        //    transform.translation.y = 0.0;
+        //    physics.velocity.y = 0.0;
+        //    physics.on_ground = true;
+        // } else {
+        //    physics.on_ground = false;
+        // }
     }
 }
 

@@ -1,11 +1,12 @@
 use bevy::prelude::*;
 
-pub mod game;
-pub mod resolution;
-pub mod paralax_background;
 pub mod animations;
+pub mod game;
+pub mod ground;
+pub mod paralax_background;
 pub mod physics;
 pub mod player;
+pub mod resolution;
 
 fn main() {
     App::new()
