@@ -5,6 +5,7 @@ use crate::paralax_background;
 use crate::player;
 use crate::resolution;
 use crate::physics;
+use crate::enemy;
 
 pub struct GamePlugin;
 
@@ -16,6 +17,7 @@ impl Plugin for GamePlugin {
             physics::GravityPlugin,
             animations::AnimationPlugin,
             player::PlayerPlugin,
+            enemy::EnemyPlugin,
         ))
         .add_systems(Startup, setup_scene)
         .insert_resource(paralax_background::ParallaxMonitor::default())

@@ -5,6 +5,7 @@ use crate::animations::{
 };
 use crate::resolution;
 use crate::physics::{Physics}; // Importar el sistema de física
+use crate::enemy::AttackHitbox;
 
 // Plugin principal del jugador
 pub struct PlayerPlugin;
@@ -14,7 +15,8 @@ impl Plugin for PlayerPlugin {
         app.add_systems(Startup, setup_player)
            .add_systems(Update, process_player_input)
            .add_systems(Update, player_jump.after(process_player_input))
-           .add_systems(Update, update_animations);
+           .add_systems(Update, update_animations)
+           .add_systems(Update, update_attack_hitbox);
     }
 }
 
@@ -133,6 +135,35 @@ fn player_jump(
         if keyboard.just_pressed(KeyCode::Space) && physics.on_ground && can_jump {
             physics.velocity.y = 500.0; // Fuerza de salto
             physics.on_ground = false;
+        }
+    }
+}
+
+// Sistema para actualizar la hitbox de ataque
+fn update_attack_hitbox(
+    mut commands: Commands,
+    mut query: Query<(Entity, &AnimationController, &Transform, &Player)>,
+) {
+    for (entity, animation_controller, transform, player) in &mut query {
+        let current_state = animation_controller.get_current_state();
+        
+        // Si está atacando, crear o actualizar la hitbox
+        if current_state == CharacterState::Attacking || current_state == CharacterState::ChargeAttacking {
+            let damage = if current_state == CharacterState::Attacking {
+                player.attack
+            } else {
+                player.attack * 2.0 // Ataque cargado hace más daño
+            };
+
+            // Crear o actualizar la hitbox de ataque
+            commands.entity(entity).insert(AttackHitbox {
+                damage,
+                active: true,
+                size: Vec2::new(50.0, 30.0), // Tamaño de la hitbox
+            });
+        } else {
+            // Si no está atacando, remover la hitbox
+            commands.entity(entity).remove::<AttackHitbox>();
         }
     }
 }

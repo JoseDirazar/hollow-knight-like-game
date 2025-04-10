@@ -6,6 +6,7 @@ pub mod paralax_background;
 pub mod animations;
 pub mod physics;
 pub mod player;
+pub mod enemy;
 
 fn main() {
     App::new()
@@ -24,6 +25,7 @@ fn main() {
                 })
                 .set(ImagePlugin::default_nearest()),
             game::GamePlugin,
+
         ))
         .run();
 }
