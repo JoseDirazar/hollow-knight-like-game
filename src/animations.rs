@@ -9,6 +9,8 @@ pub enum CharacterState {
     Running,
     Jumping, // Nuevo estado para saltar
     Falling, // Opcional: estado para caer
+    Hurt,    // Estado para cuando recibe daño
+    Dead,
 }
 
 // Componente para administrar las animaciones
