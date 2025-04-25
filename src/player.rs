@@ -3,8 +3,8 @@ use bevy::prelude::*;
 use crate::animations::{
     AnimationController, AnimationData, CharacterAnimations, CharacterState, CurrentAnimation,
 };
-use crate::resolution;
-use crate::physics::{Physics}; // Importar el sistema de física
+use crate::physics::Physics;
+use crate::resolution; // Importar el sistema de física
 
 // Plugin principal del jugador
 pub struct PlayerPlugin;
@@ -12,9 +12,9 @@ pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_player)
-           .add_systems(Update, process_player_input)
-           .add_systems(Update, player_jump.after(process_player_input))
-           .add_systems(Update, update_animations);
+            .add_systems(Update, process_player_input)
+            .add_systems(Update, player_jump.after(process_player_input))
+            .add_systems(Update, update_animations);
     }
 }
 
@@ -43,18 +43,17 @@ fn can_move(state: &CharacterState) -> bool {
 }
 
 // Sistema separado para actualizar las animaciones según el estado físico
-fn update_animations(
-    mut query: Query<(&mut AnimationController, &Physics, &Player)>,
-) {
+fn update_animations(mut query: Query<(&mut AnimationController, &Physics, &Player)>) {
     for (mut animation_controller, physics, _player) in &mut query {
         let current_state = animation_controller.get_current_state();
-        
+
         // No cambiar las animaciones si está atacando
-        if current_state == CharacterState::Attacking || 
-           current_state == CharacterState::ChargeAttacking {
+        if current_state == CharacterState::Attacking
+            || current_state == CharacterState::ChargeAttacking
+        {
             continue;
         }
-        
+
         // Si está en el aire, usar animación de salto
         if !physics.on_ground {
             // Solo cambiar a salto si no viene de un ataque
@@ -77,20 +76,34 @@ fn update_animations(
 
 fn process_player_input(
     keyboard: Res<ButtonInput<KeyCode>>,
-    time: Res<Time>,
-    mut query: Query<(&mut AnimationController, &mut Player, &mut Transform, &mut Physics), With<Player>>,
+    _time: Res<Time>,
+    mut query: Query<
+        (
+            &mut AnimationController,
+            &mut Player,
+            &mut Transform,
+            &mut Physics,
+        ),
+        With<Player>,
+    >,
 ) {
     for (mut animation_controller, mut player, mut transform, mut physics) in &mut query {
         let current_state = animation_controller.get_current_state();
         let can_move_now = can_move(&current_state);
 
         // Ataque con Z en lugar de Espacio
-        if keyboard.just_pressed(KeyCode::KeyZ) && current_state != CharacterState::Attacking && current_state != CharacterState::Jumping {
+        if keyboard.just_pressed(KeyCode::KeyZ)
+            && current_state != CharacterState::Attacking
+            && current_state != CharacterState::Jumping
+        {
             animation_controller.change_state(CharacterState::Attacking);
         }
 
         // Ataque cargado con V
-        if keyboard.just_pressed(KeyCode::KeyV) && current_state != CharacterState::ChargeAttacking && current_state != CharacterState::Jumping {
+        if keyboard.just_pressed(KeyCode::KeyV)
+            && current_state != CharacterState::ChargeAttacking
+            && current_state != CharacterState::Jumping
+        {
             animation_controller.change_state(CharacterState::ChargeAttacking);
         }
 
@@ -129,7 +142,7 @@ fn player_jump(
     for (mut physics, animation_controller) in &mut query {
         let current_state = animation_controller.get_current_state();
         let can_jump = can_move(&current_state); // Usar la misma lógica de can_move
-        
+
         if keyboard.just_pressed(KeyCode::Space) && physics.on_ground && can_jump {
             physics.velocity.y = 500.0; // Fuerza de salto
             physics.on_ground = false;
@@ -143,7 +156,17 @@ fn setup_player(
     asset_server: Res<AssetServer>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     resolution: Res<resolution::Resolution>,
+    windows: Query<&Window>,
 ) {
+    // Get window dimensions to position player properly
+    let window = windows.single();
+    let window_height = window.height();
+
+    // Calcular la posición inicial del jugador
+    // Nivel del suelo (30% desde abajo)
+    let ground_height = -window_height * 0.3;
+    let player_y = ground_height + 90.0 * resolution.pixel_ratio;
+
     // Cargar texturas
     let idle_texture = asset_server.load("hero/Idle.png");
     let attack_texture = asset_server.load("hero/Attack1.png");
@@ -211,8 +234,8 @@ fn setup_player(
                 texture: jump_texture.clone(),
                 atlas_layout: jump_atlas_layout.clone(),
                 frames: 3,
-                fps: 18.0,       // Un poco más lento que correr
-                looping: true,  // Loop para mantener la animación mientras está en el aire
+                fps: 18.0,     // Un poco más lento que correr
+                looping: true, // Loop para mantener la animación mientras está en el aire
                 ping_pong: false,
             },
         ],
@@ -248,9 +271,14 @@ fn setup_player(
             facing_right: true, // Inicialmente mirando a la derecha
         },
         // Componente de física para gravedad
-        Physics::default(),
-        // Transformación
-        Transform::from_xyz(0.0, -100.0, 0.0).with_scale(Vec3::splat(resolution.pixel_ratio)), // Posición inicial desde el suelo
+        Physics {
+            velocity: Vec2::ZERO,
+            acceleration: Vec2::ZERO,
+            on_ground: true, // Comienza en el suelo
+            gravity_scale: 1.0,
+        },
+        // Transformación - Posicionar jugador sobre el nivel del suelo
+        Transform::from_xyz(0.0, player_y, 0.0).with_scale(Vec3::splat(resolution.pixel_ratio)),
         // Componentes de animación
         AnimationController::default(),
         animations,

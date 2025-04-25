@@ -1,4 +1,4 @@
-use bevy::{animation, prelude::*};
+use bevy::prelude::*;
 
 // Estado del personaje
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -7,8 +7,8 @@ pub enum CharacterState {
     Attacking,
     ChargeAttacking,
     Running,
-    Jumping,    // Nuevo estado para saltar
-    Falling,    // Opcional: estado para caer
+    Jumping, // Nuevo estado para saltar
+    Falling, // Opcional: estado para caer
 }
 
 // Componente para administrar las animaciones
@@ -76,8 +76,9 @@ pub struct CurrentAnimation {
     pub reverse_direction: bool, // New field to track direction
 }
 
-// Plugin principal de animación
+// Plugin para gestionar animaciones
 pub struct AnimationPlugin;
+
 impl Plugin for AnimationPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
@@ -132,7 +133,12 @@ pub fn update_animation_state(
 // Sistema que anima el sprite según el estado actual
 pub fn animate_current_state(
     time: Res<Time>,
-    mut query: Query<(&mut CurrentAnimation, &mut AnimationController, &mut Sprite, &CharacterAnimations)>,
+    mut query: Query<(
+        &mut CurrentAnimation,
+        &mut AnimationController,
+        &mut Sprite,
+        &CharacterAnimations,
+    )>,
 ) {
     for (mut animation, mut controller, mut sprite, character_animations) in &mut query {
         // Update the animation timer
@@ -142,11 +148,15 @@ pub fn animate_current_state(
             if let Some(atlas) = &mut sprite.texture_atlas {
                 // Buscar la configuración de animación actual
                 let current_state = controller.get_current_state();
-                let current_animation_data = character_animations.animations.iter()
+                let current_animation_data = character_animations
+                    .animations
+                    .iter()
                     .find(|anim| anim.state == current_state);
-                
-                let ping_pong = current_animation_data.map(|data| data.ping_pong).unwrap_or(false);
-                
+
+                let ping_pong = current_animation_data
+                    .map(|data| data.ping_pong)
+                    .unwrap_or(false);
+
                 // Determine direction of animation
                 if animation.reverse_direction && ping_pong {
                     animation.current_frame -= 1;
