@@ -19,11 +19,78 @@ pub struct Ground {
     pub original_position: Vec3,
     pub position_index: i32,
 }
-
-// Setup the ground with 5 instances
 fn setup_ground(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+    resolution: Res<Resolution>,
+    windows: Query<&Window>,
+) {
+    let window = windows.single();
+    let window_height = window.height();
+
+    // Cargar la imagen del tileset
+    let texture_handle = asset_server.load("world/levels/1/ground/GroundTileset.png");
+
+    // Usar 6x6 grilla con tiles de 160x160 px
+    let tile_size = UVec2::new(160, 160);
+    let ground_atlas = TextureAtlasLayout::from_grid(tile_size, 6, 6, None, None);
+    let ground_atlas_layout = texture_atlas_layouts.add(ground_atlas);
+
+    // Escalado y posicionamiento
+    let scale_factor = resolution.pixel_ratio * 0.33;
+    let scaled_width = tile_size.x as f32 * scale_factor;
+    let ground_height = -window_height * 0.45;
+
+    // Entidad padre
+    let ground_parent = commands
+        .spawn((
+            Transform::default(),
+            Visibility::default(),
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ))
+        .id();
+
+    // Tile que queremos renderizar, ej: tile 30
+    let tile_index = 30;
+
+    // Crear los bloques de suelo
+    commands.entity(ground_parent).with_children(|parent| {
+        for i in -5..=5 {
+            let x_pos = i as f32 * scaled_width;
+
+            parent.spawn((
+                Sprite::from_atlas_image(
+                    texture_handle.clone(),
+                    TextureAtlas {
+                        layout: ground_atlas_layout.clone(),
+                        index: tile_index,
+                    },
+                ),
+                Transform::from_xyz(x_pos, ground_height, 10.0).with_scale(Vec3::new(
+                    scale_factor,
+                    scale_factor,
+                    1.0,
+                )),
+                Ground {
+                    sprite_width: scaled_width,
+                    original_position: Vec3::new(x_pos, ground_height, 10.0),
+                    position_index: i,
+                },
+                Visibility::default(),
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
+            ));
+        }
+    });
+}
+
+// Setup the ground with 5 instances
+fn setup_ground_old(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     resolution: Res<Resolution>,
     windows: Query<&Window>,
 ) {
@@ -32,18 +99,21 @@ fn setup_ground(
     let window_height = window.height();
 
     // Load the ground sprite
-    let ground_texture = asset_server.load("world/levels/1/ground/ground-230x19.png");
+    let ground_texture = asset_server.load("world/levels/1/ground/GroundTileset.png");
+    let texture_size = UVec2::splat(180);
+    let ground_atlas = TextureAtlasLayout::from_grid(texture_size, 3, 4, None, None);
 
+    let ground_atlas_layout = texture_atlas_layouts.add(ground_atlas);
     // Get the sprite dimensions and calculate scale
-    let sprite_width = 230.0;
-    let _sprite_height = 19.0; // Prefix with underscore since it's currently unused
+    let sprite_width = 180.0;
+    let _sprite_height = 180.0; // Prefix with underscore since it's currently unused
 
     // Calculate scale to fit the sprite properly
     let scale_factor = resolution.pixel_ratio * 2.0;
     let scaled_width = sprite_width * scale_factor;
 
     // Calculate ground height (20% of the bottom of the screen)
-    let ground_height = -window_height * 0.3; // Positioning at 30% from the bottom
+    let ground_height = -window_height * 2.; // Positioning at 30% from the bottom
 
     // Ground parent entity
     let ground_parent = commands
@@ -105,7 +175,7 @@ fn update_ground_position(
             if transform.translation.x < camera_x - half_window - (ground.sprite_width / 2.0) {
                 // This ground piece is off-screen to the left, move it to the right
                 // Move it 5 positions to the right
-                transform.translation.x += ground.sprite_width * 5.0;
+                transform.translation.x += ground.sprite_width * 10.0;
 
                 // Update position index
                 ground.position_index += 5;
@@ -116,10 +186,10 @@ fn update_ground_position(
             {
                 // This ground piece is off-screen to the right, move it to the left
                 // Move it 5 positions to the left
-                transform.translation.x -= ground.sprite_width * 5.0;
+                transform.translation.x -= ground.sprite_width * 10.0;
 
                 // Update position index
-                ground.position_index -= 5;
+                ground.position_index -= 10;
 
                 // Update original position
                 ground.original_position.x = transform.translation.x;
@@ -133,30 +203,31 @@ fn ground_collision(
     ground_query: Query<(&Transform, &Ground)>,
     mut player_query: Query<(&mut Transform, &mut Physics), Without<Ground>>,
 ) {
-    // Obtener los datos del jugador
+    const PLAYER_HEIGHT: f32 = 160.0;
+    const GROUND_HEIGHT: f32 = 160.0;
+    const PLAYER_FEET_OFFSET: f32 = 56.0; // Ajusta este valor según el padding
+
     if let Ok((mut player_transform, mut physics)) = player_query.get_single_mut() {
-        // Reset ground state
         physics.on_ground = false;
 
-        // Calculate player feet position (ajustado para la escala del sprite)
-        let player_feet = player_transform.translation.y - 80.0 * player_transform.scale.y.abs();
+        // Ajusta la posición de los pies según el padding del sprite
+        let player_scale = player_transform.scale.y.abs();
+        let player_feet = player_transform.translation.y
+            - ((PLAYER_HEIGHT / 2.0) - PLAYER_FEET_OFFSET) * player_scale;
 
-        // Verificar colisión con cada pieza de suelo
         for (ground_transform, ground) in ground_query.iter() {
-            // Calculate ground collision area - posición superior del suelo
-            let ground_top = ground_transform.translation.y + 9.5 * ground_transform.scale.y.abs();
+            let ground_scale = ground_transform.scale.y.abs();
+            let ground_top = ground_transform.translation.y + (GROUND_HEIGHT / 2.0) * ground_scale;
 
-            // Check if player is standing on ground - condiciones de colisión mejoradas
-            if physics.velocity.y <= 0.0 && // Player is falling or stationary
-               player_feet <= ground_top + 10.0 && // Player feet at or below ground top (con margen)
-               player_feet >= ground_top - 20.0 && // Not too far below ground
-               (player_transform.translation.x - ground_transform.translation.x).abs() < ground.sprite_width / 2.0
-            // Dentro del ancho del suelo
+            if physics.velocity.y <= 0.0
+                && player_feet <= ground_top + 10.0
+                && player_feet >= ground_top - 15.0
+                && (player_transform.translation.x - ground_transform.translation.x).abs()
+                    < ground.sprite_width / 2.0
             {
-                // Colisión detectada - colocar al jugador sobre el suelo
-                player_transform.translation.y = ground_top + 80.0 * player_transform.scale.y.abs();
-
-                // Detener caída y marcar que está en el suelo
+                // Ajusta la posición final para compensar el padding
+                player_transform.translation.y =
+                    ground_top + ((PLAYER_HEIGHT / 2.0) - PLAYER_FEET_OFFSET) * player_scale;
                 physics.velocity.y = 0.0;
                 physics.on_ground = true;
                 break;
