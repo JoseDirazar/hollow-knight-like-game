@@ -1,8 +1,10 @@
 use crate::animations::{
     AnimationController, AnimationData, CharacterAnimations, CharacterState, CurrentAnimation,
 };
+use crate::ground::ground_collision;
 use crate::physics::Physics;
 use crate::player::Player;
+use crate::resolution; // Importar el sistema de física
 use bevy::prelude::*;
 
 // Componente para el enemigo
@@ -51,7 +53,7 @@ impl Plugin for EnemyPlugin {
                     check_death,
                     cleanup_dead_enemies,
                 )
-                    .chain(),
+                    .after(ground_collision),
             );
     }
 }
@@ -62,7 +64,11 @@ fn update_player_position(
     mut player_position: ResMut<PlayerPosition>,
 ) {
     if let Ok(transform) = player.get_single() {
+        // Solo actualiza, no modifica las coordenadas
         player_position.position = transform.translation;
+
+        // Depuración
+        println!("Player position: {:?}", player_position.position);
     }
 }
 
@@ -216,7 +222,14 @@ fn setup_enemy(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+    resolution: Res<resolution::Resolution>,
+    windows: Query<&Window>,
 ) {
+    let window = windows.single();
+    let window_height = window.height();
+    let ground_height = -window_height * 0.3;
+    let enemy_y = ground_height + 90.0 * resolution.pixel_ratio;
+
     // Cargar texturas del esqueleto
     let idle_texture = asset_server.load("enemy/skeleton/skeletonIdle-Sheet64x64.png");
     let attack_texture = asset_server.load("enemy/skeleton/skeletonAttack-Sheet146x64.png");
@@ -320,12 +333,11 @@ fn setup_enemy(
         },
         Physics {
             velocity: Vec2::ZERO,
-            acceleration: Vec2::new(0.0, -500.0),
-            on_ground: false,
+            acceleration: Vec2::ZERO,
+            on_ground: true,
             gravity_scale: 1.0,
         },
-        Transform::from_xyz(400.0, 0.0, 0.0),
-        GlobalTransform::default(),
+        Transform::from_xyz(400.0, enemy_y, 0.0),
         AnimationController::default(),
         animations,
         initial_animation,

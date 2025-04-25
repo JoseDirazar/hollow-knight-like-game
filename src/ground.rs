@@ -127,7 +127,7 @@ fn setup_ground_old(
 
     // Spawn 5 ground instances to create a continuous ground
     commands.entity(ground_parent).with_children(|parent| {
-        for i in -2..=2 {
+        for i in -10..=10 {
             let x_pos = i as f32 * scaled_width;
 
             parent.spawn((
@@ -199,7 +199,7 @@ fn update_ground_position(
 }
 
 // Implement collision detection for the ground
-fn ground_collision(
+pub fn ground_collision(
     ground_query: Query<(&Transform, &Ground)>,
     mut player_query: Query<(&mut Transform, &mut Physics), Without<Ground>>,
 ) {
