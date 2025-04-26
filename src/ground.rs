@@ -201,33 +201,32 @@ fn update_ground_position(
 // Implement collision detection for the ground
 pub fn ground_collision(
     ground_query: Query<(&Transform, &Ground)>,
-    mut player_query: Query<(&mut Transform, &mut Physics), Without<Ground>>,
+    mut characters_query: Query<(Entity, &mut Transform, &mut Physics), Without<Ground>>,
 ) {
     const PLAYER_HEIGHT: f32 = 160.0;
     const GROUND_HEIGHT: f32 = 160.0;
-    const PLAYER_FEET_OFFSET: f32 = 56.0; // Ajusta este valor según el padding
+    const PLAYER_FEET_OFFSET: f32 = 56.0;
 
-    if let Ok((mut player_transform, mut physics)) = player_query.get_single_mut() {
+    // Procesar cada entidad (jugador o enemigo) individualmente
+    for (entity, mut character_transform, mut physics) in characters_query.iter_mut() {
         physics.on_ground = false;
 
-        // Ajusta la posición de los pies según el padding del sprite
-        let player_scale = player_transform.scale.y.abs();
-        let player_feet = player_transform.translation.y
-            - ((PLAYER_HEIGHT / 2.0) - PLAYER_FEET_OFFSET) * player_scale;
+        let character_scale = character_transform.scale.y.abs();
+        let character_feet = character_transform.translation.y
+            - ((PLAYER_HEIGHT / 2.0) - PLAYER_FEET_OFFSET) * character_scale;
 
         for (ground_transform, ground) in ground_query.iter() {
             let ground_scale = ground_transform.scale.y.abs();
             let ground_top = ground_transform.translation.y + (GROUND_HEIGHT / 2.0) * ground_scale;
 
             if physics.velocity.y <= 0.0
-                && player_feet <= ground_top + 10.0
-                && player_feet >= ground_top - 15.0
-                && (player_transform.translation.x - ground_transform.translation.x).abs()
+                && character_feet <= ground_top + 10.0
+                && character_feet >= ground_top - 15.0
+                && (character_transform.translation.x - ground_transform.translation.x).abs()
                     < ground.sprite_width / 2.0
             {
-                // Ajusta la posición final para compensar el padding
-                player_transform.translation.y =
-                    ground_top + ((PLAYER_HEIGHT / 2.0) - PLAYER_FEET_OFFSET) * player_scale;
+                character_transform.translation.y =
+                    ground_top + ((PLAYER_HEIGHT / 2.0) - PLAYER_FEET_OFFSET) * character_scale;
                 physics.velocity.y = 0.0;
                 physics.on_ground = true;
                 break;

@@ -16,7 +16,6 @@ impl Plugin for PlayerPlugin {
             .add_systems(Update, process_player_input)
             .add_systems(Update, player_jump.after(process_player_input))
             .add_systems(Update, update_animations)
-            .add_systems(Update, update_animations)
             .add_systems(Update, update_attack_hitbox);
     }
 }

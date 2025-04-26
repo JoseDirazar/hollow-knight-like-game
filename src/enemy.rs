@@ -66,9 +66,6 @@ fn update_player_position(
     if let Ok(transform) = player.get_single() {
         // Solo actualiza, no modifica las coordenadas
         player_position.position = transform.translation;
-
-        // Depuración
-        println!("Player position: {:?}", player_position.position);
     }
 }
 
