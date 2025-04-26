@@ -37,6 +37,7 @@ fn can_move(state: &CharacterState) -> bool {
         // Lista de estados en los que el personaje NO puede moverse
         CharacterState::Attacking => false,
         CharacterState::ChargeAttacking => false,
+        CharacterState::Hurt => false,
         // Agrega cualquier otro estado que deba bloquear el movimiento
 
         // En cualquier otro estado, el personaje puede moverse
@@ -49,9 +50,10 @@ fn update_animations(mut query: Query<(&mut AnimationController, &Physics, &Play
     for (mut animation_controller, physics, _player) in &mut query {
         let current_state = animation_controller.get_current_state();
 
-        // No cambiar las animaciones si está atacando
+        // No cambiar las animaciones si está atacando, atacando con carga o herido
         if current_state == CharacterState::Attacking
             || current_state == CharacterState::ChargeAttacking
+            || current_state == CharacterState::Hurt
         {
             continue;
         }
@@ -175,19 +177,21 @@ fn setup_player(
     let charge_attack_texture = asset_server.load("hero/Attack2.png");
     let run_texture = asset_server.load("hero/Run.png");
     let jump_texture = asset_server.load("hero/Jump.png"); // Nueva textura para salto
-
+    let take_hit_texture: Handle<Image> = asset_server.load("hero/TakeHit.png");
     // Crear layouts de atlas
     let idle_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 11, 1, None, None);
     let attack_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 7, 1, None, None);
     let charge_attack_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 7, 1, None, None);
     let run_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 8, 1, None, None);
     let jump_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 3, 1, None, None); // Layout para salto
+    let take_hit_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 4, 1, None, None);
 
     let idle_atlas_layout = texture_atlas_layouts.add(idle_layout);
     let attack_atlas_layout = texture_atlas_layouts.add(attack_layout);
     let charge_attack_attlas_layout = texture_atlas_layouts.add(charge_attack_layout);
     let run_atlas_layout = texture_atlas_layouts.add(run_layout);
     let jump_atlas_layout = texture_atlas_layouts.add(jump_layout); // Atlas para salto
+    let take_hit_attlas_layout = texture_atlas_layouts.add(take_hit_layout);
 
     // Crear datos de animación
     let animations = CharacterAnimations {
@@ -236,8 +240,17 @@ fn setup_player(
                 texture: jump_texture.clone(),
                 atlas_layout: jump_atlas_layout.clone(),
                 frames: 3,
-                fps: 18.0,     // Un poco más lento que correr
+                fps: 12.0,     // Un poco más lento que correr
                 looping: true, // Loop para mantener la animación mientras está en el aire
+                ping_pong: false,
+            },
+            AnimationData {
+                state: CharacterState::Hurt,
+                texture: take_hit_texture.clone(),
+                atlas_layout: take_hit_attlas_layout.clone(),
+                frames: 4,
+                fps: 10.0,     
+                looping: false, 
                 ping_pong: false,
             },
         ],

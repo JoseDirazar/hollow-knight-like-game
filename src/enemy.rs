@@ -6,7 +6,7 @@ use crate::physics::Physics;
 use crate::player::Player;
 use crate::resolution; // Importar el sistema de física
 use bevy::prelude::*;
-use rand::prelude::*;
+use rand;
 // Componente para el enemigo
 #[derive(Component)]
 pub struct Enemy {
@@ -25,6 +25,14 @@ pub struct Enemy {
 // Componente para la hitbox de ataque
 #[derive(Component)]
 pub struct AttackHitbox {
+    pub damage: f32,
+    pub active: bool,
+    pub size: Vec2,
+}
+
+// Componente para la hitbox de ataque de enemigo
+#[derive(Component)]
+pub struct EnemyAttackHitbox {
     pub damage: f32,
     pub active: bool,
     pub size: Vec2,
@@ -66,6 +74,7 @@ impl Plugin for EnemyPlugin {
                     update_player_position,
                     update_enemy_movement,
                     update_enemy_animations,
+                    update_enemy_attack_hitbox,
                     handle_damage,
                     check_death,
                     cleanup_dead_enemies,
@@ -190,17 +199,47 @@ fn update_enemy_animations(mut enemies: Query<(&mut AnimationController, &Physic
     }
 }
 
+// Sistema para manejar las hitboxes de ataque de los enemigos
+fn update_enemy_attack_hitbox(
+    mut commands: Commands,
+    mut query: Query<(Entity, &AnimationController, &Transform, &Enemy)>,
+) {
+    for (entity, animation_controller, transform, enemy) in &mut query {
+        if enemy.is_dead {
+            continue;
+        }
+        
+        let current_state = animation_controller.get_current_state();
+
+        // Si está atacando, crear o actualizar la hitbox
+        if current_state == CharacterState::Attacking {
+            // Crear o actualizar la hitbox de ataque
+            commands.entity(entity).insert(EnemyAttackHitbox {
+                damage: enemy.attack,
+                active: true,
+                size: Vec2::new(50.0, 30.0), // Tamaño de la hitbox
+            });
+        } else {
+            // Si no está atacando, remover la hitbox
+            commands.entity(entity).remove::<EnemyAttackHitbox>();
+        }
+    }
+}
+
 // Sistema para manejar el daño
 fn handle_damage(
     mut enemies: Query<(&mut Enemy, &Transform, &mut AnimationController)>,
-    hitboxes: Query<(&AttackHitbox, &Transform)>,
+    mut players: Query<(&mut Player, &Transform, &mut AnimationController), Without<Enemy>>,
+    player_hitboxes: Query<(&AttackHitbox, &Transform)>,
+    enemy_hitboxes: Query<(&EnemyAttackHitbox, &Transform)>,
 ) {
+    // Manejar daño a los enemigos
     for (mut enemy, enemy_transform, mut animation_controller) in &mut enemies {
         if enemy.is_dead {
             continue;
         }
 
-        for (hitbox, hitbox_transform) in &hitboxes {
+        for (hitbox, hitbox_transform) in &player_hitboxes {
             if hitbox.active {
                 let distance =
                     (hitbox_transform.translation - enemy_transform.translation).length();
@@ -215,6 +254,24 @@ fn handle_damage(
             }
         }
     }
+
+    // Manejar daño al jugador
+    if let Ok((mut player, player_transform, mut animation_controller)) = players.get_single_mut() {
+        for (hitbox, hitbox_transform) in &enemy_hitboxes {
+            if hitbox.active {
+                let distance =
+                    (hitbox_transform.translation - player_transform.translation).length();
+                if distance < hitbox.size.x {
+                    // Aplicar daño al jugador
+                    let damage = hitbox.damage - player.defense;
+                    if damage > 0.0 {
+                        player.health -= damage;
+                        animation_controller.change_state(CharacterState::Hurt);
+                    }
+                }
+            }
+        }
+    }
 }
 
 // Sistema para verificar la muerte
@@ -223,149 +280,11 @@ fn check_death(mut query: Query<(&mut Enemy, &mut AnimationController)>) {
         if enemy.health <= 0.0 && !enemy.is_dead {
             enemy.is_dead = true;
             animation_controller.change_state(CharacterState::Dead);
-            enemy.death_timer = Timer::from_seconds(1.0, TimerMode::Once);
+            enemy.death_timer = Timer::from_seconds(15.0, TimerMode::Once);
         }
     }
 }
 
-// Configuración inicial del enemigo
-fn setup_enemy(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
-    resolution: Res<resolution::Resolution>,
-    windows: Query<&Window>,
-) {
-    let window = windows.single();
-    let window_height = window.height();
-    let ground_height = -window_height * 0.3;
-    let enemy_y = ground_height + 90.0 * resolution.pixel_ratio;
-
-    // Cargar texturas del esqueleto
-
-    let idle_texture = asset_server.load("enemy/skeleton/skeletonIdle-Sheet64x64.png");
-    let attack_texture = asset_server.load("enemy/skeleton/skeletonAttack-Sheet146x64.png");
-    let move_texture = asset_server.load("enemy/skeleton/skeletonMove-Sheet64x64.png");
-    let hurt_texture = asset_server.load("enemy/skeleton/skeletonHurt-Sheet64x64.png");
-    let die_texture = asset_server.load("enemy/skeleton/skeletonDie-Sheet118x64_all.png");
-
-    // Crear layouts de atlas
-    let idle_layout = TextureAtlasLayout::from_grid(UVec2::splat(64), 8, 1, None, None);
-    let attack_layout = TextureAtlasLayout::from_grid(UVec2::new(146, 64), 5, 5, None, None);
-    let move_layout = TextureAtlasLayout::from_grid(UVec2::splat(64), 10, 1, None, None);
-    let hurt_layout = TextureAtlasLayout::from_grid(UVec2::splat(64), 3, 1, None, None);
-    let die_layout = TextureAtlasLayout::from_grid(UVec2::new(118, 64), 5, 5, None, None);
-
-    let idle_atlas_layout = texture_atlas_layouts.add(idle_layout);
-    let attack_atlas_layout = texture_atlas_layouts.add(attack_layout);
-    let move_atlas_layout = texture_atlas_layouts.add(move_layout);
-    let hurt_atlas_layout = texture_atlas_layouts.add(hurt_layout);
-    let die_atlas_layout = texture_atlas_layouts.add(die_layout);
-
-    // Crear datos de animación
-    let animations = CharacterAnimations {
-        animations: vec![
-            AnimationData {
-                state: CharacterState::Idle,
-                texture: idle_texture.clone(),
-                atlas_layout: idle_atlas_layout.clone(),
-                frames: 8,
-                fps: 10.0,
-                looping: true,
-                ping_pong: false,
-            },
-            AnimationData {
-                state: CharacterState::Attacking,
-                texture: attack_texture.clone(),
-                atlas_layout: attack_atlas_layout.clone(),
-                frames: 23,
-                fps: 15.0,
-                looping: false,
-                ping_pong: false,
-            },
-            AnimationData {
-                state: CharacterState::Running,
-                texture: move_texture.clone(),
-                atlas_layout: move_atlas_layout.clone(),
-                frames: 10,
-                fps: 12.0,
-                looping: true,
-                ping_pong: false,
-            },
-            AnimationData {
-                state: CharacterState::Hurt,
-                texture: hurt_texture.clone(),
-                atlas_layout: hurt_atlas_layout.clone(),
-                frames: 3,
-                fps: 10.0,
-                looping: false,
-                ping_pong: false,
-            },
-            AnimationData {
-                state: CharacterState::Dead,
-                texture: die_texture.clone(),
-                atlas_layout: die_atlas_layout.clone(),
-                frames: 24,
-                fps: 10.0,
-                looping: false,
-                ping_pong: false,
-            },
-        ],
-    };
-
-    // Animación inicial (idle)
-    let initial_animation = CurrentAnimation {
-        current_frame: 0,
-        timer: Timer::from_seconds(0.1, TimerMode::Repeating),
-        total_frames: 8,
-        looping: true,
-        reverse_direction: false,
-    };
-
-    // Factor de escala para el enemigo
-    let scale_factor = 2.0;
-    // Ajuste de la posición Y para evitar que los pies estén bajo el suelo
-    // Asumiendo que enemy_y es la posición base, ajustamos hacia arriba por el escalado
-    let adjusted_y = enemy_y + ((scale_factor - 1.0) * 32.0); // 32 es la mitad de la altura original (64)
-
-    // Crear entidad del enemigo con escala uniforme
-    commands.spawn((
-        Sprite::from_atlas_image(
-            idle_texture,
-            TextureAtlas {
-                layout: idle_atlas_layout,
-                index: 0,
-            },
-        ),
-        Enemy {
-            health: 50.0,
-            max_health: 50.0,
-            attack: 10.0,
-            defense: 5.0,
-            speed: 150.0,
-            attack_range: 50.0,
-            detection_range: 200.0,
-            facing_right: true,
-            is_dead: false,
-            death_timer: Timer::from_seconds(1.0, TimerMode::Once),
-        },
-        Physics {
-            velocity: Vec2::ZERO,
-            acceleration: Vec2::ZERO,
-            on_ground: true,
-            gravity_scale: 1.0,
-        },
-        // Aplicamos escala uniforme y posición Y ajustada
-        Transform::from_xyz(400.0, adjusted_y, 5.0).with_scale(Vec3::new(
-            scale_factor,
-            scale_factor,
-            1.0,
-        )),
-        AnimationController::default(),
-        animations,
-        initial_animation,
-    ));
-}
 
 fn respawn_enemies(
     mut commands: Commands,
@@ -409,7 +328,7 @@ fn spawn_enemy(
     let spawn_side = if rand::random::<bool>() { 1.0 } else { -1.0 };
     let spawn_x = spawn_side * (window_width * 0.4); // 40% desde el centro hacia los bordes
 
-    let enemy_y = ground_height + 90.0 * resolution.pixel_ratio;
+    let enemy_y = ground_height + 64.0 * resolution.pixel_ratio;
 
     let idle_texture = asset_server.load("enemy/skeleton/skeletonIdle-Sheet64x64.png");
     let attack_texture = asset_server.load("enemy/skeleton/skeletonAttack-Sheet146x64.png");
@@ -572,3 +491,142 @@ fn cleanup_dead_enemies(
         }
     }
 }
+
+// Configuración inicial del enemigo
+// fn setup_enemy(
+//     mut commands: Commands,
+//     asset_server: Res<AssetServer>,
+//     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+//     resolution: Res<resolution::Resolution>,
+//     windows: Query<&Window>,
+// ) {
+//     let window = windows.single();
+//     let window_height = window.height();
+//     let ground_height = -window_height * 0.3;
+//     let enemy_y = ground_height + 90.0 * resolution.pixel_ratio;
+
+//     // Cargar texturas del esqueleto
+
+//     let idle_texture = asset_server.load("enemy/skeleton/skeletonIdle-Sheet64x64.png");
+//     let attack_texture = asset_server.load("enemy/skeleton/skeletonAttack-Sheet146x64.png");
+//     let move_texture = asset_server.load("enemy/skeleton/skeletonMove-Sheet64x64.png");
+//     let hurt_texture = asset_server.load("enemy/skeleton/skeletonHurt-Sheet64x64.png");
+//     let die_texture = asset_server.load("enemy/skeleton/skeletonDie-Sheet118x64_all.png");
+
+//     // Crear layouts de atlas
+//     let idle_layout = TextureAtlasLayout::from_grid(UVec2::splat(64), 8, 1, None, None);
+//     let attack_layout = TextureAtlasLayout::from_grid(UVec2::new(146, 64), 5, 5, None, None);
+//     let move_layout = TextureAtlasLayout::from_grid(UVec2::splat(64), 10, 1, None, None);
+//     let hurt_layout = TextureAtlasLayout::from_grid(UVec2::splat(64), 3, 1, None, None);
+//     let die_layout = TextureAtlasLayout::from_grid(UVec2::new(118, 64), 5, 5, None, None);
+
+//     let idle_atlas_layout = texture_atlas_layouts.add(idle_layout);
+//     let attack_atlas_layout = texture_atlas_layouts.add(attack_layout);
+//     let move_atlas_layout = texture_atlas_layouts.add(move_layout);
+//     let hurt_atlas_layout = texture_atlas_layouts.add(hurt_layout);
+//     let die_atlas_layout = texture_atlas_layouts.add(die_layout);
+
+//     // Crear datos de animación
+//     let animations = CharacterAnimations {
+//         animations: vec![
+//             AnimationData {
+//                 state: CharacterState::Idle,
+//                 texture: idle_texture.clone(),
+//                 atlas_layout: idle_atlas_layout.clone(),
+//                 frames: 8,
+//                 fps: 10.0,
+//                 looping: true,
+//                 ping_pong: false,
+//             },
+//             AnimationData {
+//                 state: CharacterState::Attacking,
+//                 texture: attack_texture.clone(),
+//                 atlas_layout: attack_atlas_layout.clone(),
+//                 frames: 23,
+//                 fps: 15.0,
+//                 looping: false,
+//                 ping_pong: false,
+//             },
+//             AnimationData {
+//                 state: CharacterState::Running,
+//                 texture: move_texture.clone(),
+//                 atlas_layout: move_atlas_layout.clone(),
+//                 frames: 10,
+//                 fps: 12.0,
+//                 looping: true,
+//                 ping_pong: false,
+//             },
+//             AnimationData {
+//                 state: CharacterState::Hurt,
+//                 texture: hurt_texture.clone(),
+//                 atlas_layout: hurt_atlas_layout.clone(),
+//                 frames: 3,
+//                 fps: 10.0,
+//                 looping: false,
+//                 ping_pong: false,
+//             },
+//             AnimationData {
+//                 state: CharacterState::Dead,
+//                 texture: die_texture.clone(),
+//                 atlas_layout: die_atlas_layout.clone(),
+//                 frames: 24,
+//                 fps: 10.0,
+//                 looping: false,
+//                 ping_pong: false,
+//             },
+//         ],
+//     };
+
+//     // Animación inicial (idle)
+//     let initial_animation = CurrentAnimation {
+//         current_frame: 0,
+//         timer: Timer::from_seconds(0.1, TimerMode::Repeating),
+//         total_frames: 8,
+//         looping: true,
+//         reverse_direction: false,
+//     };
+
+//     // Factor de escala para el enemigo
+//     let scale_factor = 2.0;
+//     // Ajuste de la posición Y para evitar que los pies estén bajo el suelo
+//     // Asumiendo que enemy_y es la posición base, ajustamos hacia arriba por el escalado
+//     let adjusted_y = enemy_y + ((scale_factor - 1.0) * 32.0); // 32 es la mitad de la altura original (64)
+
+//     // Crear entidad del enemigo con escala uniforme
+//     commands.spawn((
+//         Sprite::from_atlas_image(
+//             idle_texture,
+//             TextureAtlas {
+//                 layout: idle_atlas_layout,
+//                 index: 0,
+//             },
+//         ),
+//         Enemy {
+//             health: 50.0,
+//             max_health: 50.0,
+//             attack: 10.0,
+//             defense: 5.0,
+//             speed: 150.0,
+//             attack_range: 50.0,
+//             detection_range: 200.0,
+//             facing_right: true,
+//             is_dead: false,
+//             death_timer: Timer::from_seconds(1.0, TimerMode::Once),
+//         },
+//         Physics {
+//             velocity: Vec2::ZERO,
+//             acceleration: Vec2::ZERO,
+//             on_ground: true,
+//             gravity_scale: 1.0,
+//         },
+//         // Aplicamos escala uniforme y posición Y ajustada
+//         Transform::from_xyz(400.0, adjusted_y, 5.0).with_scale(Vec3::new(
+//             scale_factor,
+//             scale_factor,
+//             1.0,
+//         )),
+//         AnimationController::default(),
+//         animations,
+//         initial_animation,
+//     ));
+// }

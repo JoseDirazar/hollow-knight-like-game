@@ -194,6 +194,9 @@ pub fn animate_current_state(
                             if controller.get_current_state() == CharacterState::ChargeAttacking {
                                 controller.change_state(CharacterState::Idle);
                             }
+                            if controller.get_current_state() == CharacterState::Hurt {
+                                controller.change_state(CharacterState::Idle);
+                            }
                         }
                     }
                 }
