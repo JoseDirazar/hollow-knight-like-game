@@ -70,6 +70,7 @@ fn update_player_position(
 }
 
 // Sistema para actualizar el movimiento del enemigo
+// Sistema para actualizar el movimiento del enemigo
 fn update_enemy_movement(
     mut enemies: Query<(
         &mut Enemy,
@@ -90,8 +91,19 @@ fn update_enemy_movement(
         // Si el jugador está dentro del rango de detección
         if abs_distance < enemy.detection_range {
             // Determinar la dirección a la que debe mirar el enemigo
-            enemy.facing_right = distance < 0.0;
-            transform.scale.x = if enemy.facing_right { 1.0 } else { -1.0 };
+            let old_facing = enemy.facing_right;
+            enemy.facing_right = distance > 0.0;
+
+            // Solo actualizar la escala si cambió la dirección
+            if old_facing != enemy.facing_right {
+                // Mantener el valor absoluto de la escala actual y solo cambiar el signo
+                let scale_magnitude = transform.scale.x.abs();
+                transform.scale.x = if enemy.facing_right {
+                    -scale_magnitude
+                } else {
+                    scale_magnitude
+                };
+            }
 
             // Si está dentro del rango de ataque
             if abs_distance < enemy.attack_range {
@@ -228,6 +240,7 @@ fn setup_enemy(
     let enemy_y = ground_height + 90.0 * resolution.pixel_ratio;
 
     // Cargar texturas del esqueleto
+
     let idle_texture = asset_server.load("enemy/skeleton/skeletonIdle-Sheet64x64.png");
     let attack_texture = asset_server.load("enemy/skeleton/skeletonAttack-Sheet146x64.png");
     let move_texture = asset_server.load("enemy/skeleton/skeletonMove-Sheet64x64.png");
@@ -236,10 +249,10 @@ fn setup_enemy(
 
     // Crear layouts de atlas
     let idle_layout = TextureAtlasLayout::from_grid(UVec2::splat(64), 8, 1, None, None);
-    let attack_layout = TextureAtlasLayout::from_grid(UVec2::new(146, 64), 4, 1, None, None);
+    let attack_layout = TextureAtlasLayout::from_grid(UVec2::new(146, 64), 5, 5, None, None);
     let move_layout = TextureAtlasLayout::from_grid(UVec2::splat(64), 10, 1, None, None);
     let hurt_layout = TextureAtlasLayout::from_grid(UVec2::splat(64), 3, 1, None, None);
-    let die_layout = TextureAtlasLayout::from_grid(UVec2::new(118, 64), 7, 1, None, None);
+    let die_layout = TextureAtlasLayout::from_grid(UVec2::new(118, 64), 5, 5, None, None);
 
     let idle_atlas_layout = texture_atlas_layouts.add(idle_layout);
     let attack_atlas_layout = texture_atlas_layouts.add(attack_layout);
@@ -263,7 +276,7 @@ fn setup_enemy(
                 state: CharacterState::Attacking,
                 texture: attack_texture.clone(),
                 atlas_layout: attack_atlas_layout.clone(),
-                frames: 4,
+                frames: 23,
                 fps: 15.0,
                 looping: false,
                 ping_pong: false,
@@ -290,7 +303,7 @@ fn setup_enemy(
                 state: CharacterState::Dead,
                 texture: die_texture.clone(),
                 atlas_layout: die_atlas_layout.clone(),
-                frames: 7,
+                frames: 24,
                 fps: 10.0,
                 looping: false,
                 ping_pong: false,
@@ -307,7 +320,13 @@ fn setup_enemy(
         reverse_direction: false,
     };
 
-    // Crear entidad del enemigo
+    // Factor de escala para el enemigo
+    let scale_factor = 2.0;
+    // Ajuste de la posición Y para evitar que los pies estén bajo el suelo
+    // Asumiendo que enemy_y es la posición base, ajustamos hacia arriba por el escalado
+    let adjusted_y = enemy_y + ((scale_factor - 1.0) * 32.0); // 32 es la mitad de la altura original (64)
+
+    // Crear entidad del enemigo con escala uniforme
     commands.spawn((
         Sprite::from_atlas_image(
             idle_texture,
@@ -334,7 +353,12 @@ fn setup_enemy(
             on_ground: true,
             gravity_scale: 1.0,
         },
-        Transform::from_xyz(400.0, enemy_y, 0.0),
+        // Aplicamos escala uniforme y posición Y ajustada
+        Transform::from_xyz(400.0, adjusted_y, 5.0).with_scale(Vec3::new(
+            scale_factor,
+            scale_factor,
+            1.0,
+        )),
         AnimationController::default(),
         animations,
         initial_animation,

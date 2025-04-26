@@ -12,6 +12,11 @@ pub enum CharacterState {
     Hurt,    // Estado para cuando recibe daño
     Dead,
 }
+#[derive(Component)]
+pub struct CharacterDimensions {
+    pub height: f32,
+    pub feet_offset: f32,
+}
 
 // Componente para administrar las animaciones
 #[derive(Component)]
