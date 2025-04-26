@@ -2315,6 +2315,7 @@ name = "hollow-knight-like-game"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "rand",
 ]
 
 [[package]]
