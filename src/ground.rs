@@ -5,8 +5,13 @@ pub struct GroundPlugin;
 
 const PLAYER_HEIGHT: f32 = 160.0;
 const GROUND_HEIGHT: f32 = 19.0;
-const PLAYER_FEET_OFFSET: f32 = 56.0;
+// Ajustado basado en los logs y las diferencias de posición observadas
+pub const PLAYER_FEET_OFFSET: f32 = 25.0;
 const GROUND_REPEAT: i32 = 28;
+
+// Valor ajustado para el enemigo
+pub const ENEMY_FEET_OFFSET: f32 = 32.0;
+
 impl Plugin for GroundPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_ground)
@@ -16,7 +21,7 @@ impl Plugin for GroundPlugin {
 }
 
 // Component to identify ground sprites
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct Ground {
     pub sprite_width: f32,
     pub original_position: Vec3,
@@ -143,28 +148,34 @@ pub fn ground_collision(
     ground_query: Query<(&Transform, &Ground)>,
     mut characters_query: Query<(Entity, &mut Transform, &mut Physics), Without<Ground>>,
 ) {
-
-
     // Procesar cada entidad (jugador o enemigo) individualmente
     for (entity, mut character_transform, mut physics) in characters_query.iter_mut() {
         physics.on_ground = false;
-        println!("{}", entity.clone());
         let character_scale = character_transform.scale.y.abs();
-        let character_feet = character_transform.translation.y
-            - ((PLAYER_HEIGHT / 2.0) ) * character_scale;
+        
+        // Check if this entity is the player based on its Z position
+        // Player is at Z=0, enemies are at Z=5
+        let is_player = character_transform.translation.z == 0.0;
+        // Debug information                
+        println!("{:?}", is_player);
+        // Use the appropriate feet offset based on entity type
+        let feet_offset = if is_player { PLAYER_FEET_OFFSET } else { ENEMY_FEET_OFFSET };
+        
+        // Calculate the feet position using the appropriate offset
+        let character_feet = character_transform.translation.y - feet_offset * character_scale;
 
         for (ground_transform, ground) in ground_query.iter() {
             let ground_scale = ground_transform.scale.y.abs();
             let ground_top = ground_transform.translation.y + (GROUND_HEIGHT / 2.0) * ground_scale;
-
             if physics.velocity.y <= 0.0
-                && character_feet <= ground_top + 10.0
-                && character_feet >= ground_top - 15.0
-                && (character_transform.translation.x - ground_transform.translation.x).abs()
-                    < ground.sprite_width / 2.0
+            && character_feet <= ground_top + 10.0
+            && character_feet >= ground_top - 15.0
+            && (character_transform.translation.x - ground_transform.translation.x).abs()
+            < ground.sprite_width / 2.0
             {
-                character_transform.translation.y =
-                    ground_top + ((PLAYER_HEIGHT / 2.0) ) * character_scale;
+                // Adjust character position based on its feet offset
+                character_transform.translation.y = ground_top + feet_offset * character_scale;
+                
                 physics.velocity.y = 0.0;
                 physics.on_ground = true;
                 break;

@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 // Componente para física básica
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct Physics {
     pub velocity: Vec2,
     pub acceleration: Vec2,

@@ -293,7 +293,11 @@ fn setup_player(
             gravity_scale: 1.0,
         },
         // Transformación - Posicionar jugador sobre el nivel del suelo
-        Transform::from_xyz(0.0, player_y, 0.0).with_scale(Vec3::splat(resolution.pixel_ratio)),
+        Transform::from_xyz(0.0, player_y, 0.0).with_scale(Vec3::new(
+            resolution.pixel_ratio,
+            resolution.pixel_ratio,
+            1.0 // Usar escala Z = 1.0 para mantener consistencia con el enemigo
+        )),
         // Componentes de animación
         AnimationController::default(),
         animations,

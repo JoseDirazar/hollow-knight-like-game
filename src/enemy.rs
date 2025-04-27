@@ -325,9 +325,12 @@ fn spawn_enemy(
     let ground_height = -window_height * 0.3;
 
     // Generar posición aleatoria en los bordes de la pantalla
-    let spawn_side = if rand::random::<bool>() { 1.0 } else { -1.0 };
+    let random_bool = rand::random::<bool>();
+    let spawn_side = if random_bool { 1.0 } else { -1.0 };
     let spawn_x = spawn_side * (window_width * 0.4); // 40% desde el centro hacia los bordes
 
+    // Use the same base ground_height for positioning the enemy
+    // We're relying on the ENEMY_FEET_OFFSET in ground_collision now
     let enemy_y = ground_height + 64.0 * resolution.pixel_ratio;
 
     let idle_texture = asset_server.load("enemy/skeleton/skeletonIdle-Sheet64x64.png");
@@ -411,8 +414,9 @@ fn spawn_enemy(
 
     // Factor de escala para el enemigo
     let scale_factor = 2.0;
-    // Ajuste de la posición Y para evitar que los pies estén bajo el suelo
-    let adjusted_y = enemy_y + ((scale_factor - 1.0) * 32.0); // 32 es la mitad de la altura original (64)
+    // No need for special Y adjustment anymore since we're using ENEMY_FEET_OFFSET
+    // for collision detection
+    let adjusted_y = enemy_y;
 
     // Crear entidad del enemigo con escala uniforme
     commands.spawn((
