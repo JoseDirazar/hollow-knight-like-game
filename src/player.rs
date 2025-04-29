@@ -3,9 +3,9 @@ use bevy::prelude::*;
 use crate::animations::{
     AnimationController, AnimationData, CharacterAnimations, CharacterState, CurrentAnimation,
 };
-use crate::enemy::AttackHitbox;
 use crate::physics::Physics;
 use crate::resolution; // Importar el sistema de física
+use crate::hitbox::Hitbox;
 
 // Plugin principal del jugador
 pub struct PlayerPlugin;
@@ -99,6 +99,7 @@ fn process_player_input(
         if keyboard.just_pressed(KeyCode::KeyZ)
             && current_state != CharacterState::Attacking
             && current_state != CharacterState::Jumping
+            && current_state != CharacterState::ChargeAttacking
         {
             animation_controller.change_state(CharacterState::Attacking);
         }
@@ -107,6 +108,7 @@ fn process_player_input(
         if keyboard.just_pressed(KeyCode::KeyV)
             && current_state != CharacterState::ChargeAttacking
             && current_state != CharacterState::Jumping
+            && current_state != CharacterState::Attacking
         {
             animation_controller.change_state(CharacterState::ChargeAttacking);
         }
@@ -249,8 +251,8 @@ fn setup_player(
                 texture: take_hit_texture.clone(),
                 atlas_layout: take_hit_attlas_layout.clone(),
                 frames: 4,
-                fps: 10.0,     
-                looping: false, 
+                fps: 10.0,
+                looping: false,
                 ping_pong: false,
             },
         ],
@@ -296,7 +298,7 @@ fn setup_player(
         Transform::from_xyz(0.0, player_y, 0.0).with_scale(Vec3::new(
             resolution.pixel_ratio,
             resolution.pixel_ratio,
-            1.0 // Usar escala Z = 1.0 para mantener consistencia con el enemigo
+            1.0, // Usar escala Z = 1.0 para mantener consistencia con el enemigo
         )),
         // Componentes de animación
         AnimationController::default(),
@@ -312,25 +314,34 @@ fn update_attack_hitbox(
     for (entity, animation_controller, transform, player) in &mut query {
         let current_state = animation_controller.get_current_state();
 
-        // Si está atacando, crear o actualizar la hitbox
-        if current_state == CharacterState::Attacking
-            || current_state == CharacterState::ChargeAttacking
-        {
+        // Si está atacando, crear o actualizar el hitbox
+        if current_state == CharacterState::Attacking || current_state == CharacterState::ChargeAttacking {
             let damage = if current_state == CharacterState::Attacking {
                 player.attack
             } else {
                 player.attack * 2.0 // Ataque cargado hace más daño
             };
+            
+            // Calcular frames activos basados en la animación
+            // MODIFICACIÓN: Usar frames similares al enemigo para mayor consistencia
+            let frames = if current_state == CharacterState::Attacking { 23 } else { 23 };
+            let hit_frame = 9; // Igual que el enemigo para consistencia
+            let active_frames = vec![hit_frame, hit_frame + 1, hit_frame + 2]; // Activo por 3 frames
 
-            // Crear o actualizar la hitbox de ataque
-            commands.entity(entity).insert(AttackHitbox {
+            println!("[PLAYER] Creating hitbox for attack: damage={}, frames={}, hit_frame={}, active_frames={:?}", 
+                damage, frames, hit_frame, active_frames);
+
+            // Crear o actualizar el hitbox con tamaño mayor y mejor offset
+            commands.entity(entity).insert(Hitbox {
                 damage,
-                active: true,
-                size: Vec2::new(50.0, 30.0), // Tamaño de la hitbox
+                active: false,
+                size: Vec2::new(200.0, 100.0), // Tamaño aumentado
+                offset: Vec2::new(if player.facing_right { 100.0 } else { -100.0 }, 0.0), // Offset aumentado
+                frames_active: active_frames,
+                cooldown: Timer::from_seconds(0.3, TimerMode::Once),
+                hit_entities: Vec::new(),
+                owner_state: current_state,
             });
-        } else {
-            // Si no está atacando, remover la hitbox
-            commands.entity(entity).remove::<AttackHitbox>();
-        }
+        } 
     }
 }

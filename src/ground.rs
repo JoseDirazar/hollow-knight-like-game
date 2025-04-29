@@ -157,7 +157,6 @@ pub fn ground_collision(
         // Player is at Z=0, enemies are at Z=5
         let is_player = character_transform.translation.z == 0.0;
         // Debug information                
-        println!("{:?}", is_player);
         // Use the appropriate feet offset based on entity type
         let feet_offset = if is_player { PLAYER_FEET_OFFSET } else { ENEMY_FEET_OFFSET };
         

@@ -1,29 +1,36 @@
 use bevy::prelude::*;
-
-use crate::animations;
-use crate::enemy;
-use crate::ground;
+use crate::animations::AnimationPlugin;
+use crate::enemy::EnemyPlugin;
+use crate::ground::GroundPlugin;
+use crate::hitbox::HitboxPlugin;
 use crate::paralax_background;
-use crate::physics;
-use crate::player;
-use crate::resolution;
+use crate::physics::GravityPlugin;
+use crate::player::PlayerPlugin;
+use crate::resolution::ResolutionPlugin;
 
 pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((
-            resolution::ResolutionPlugin,
-            paralax_background::ParallaxPlugin,
-            physics::GravityPlugin,
-            animations::AnimationPlugin,
-            player::PlayerPlugin,
-            ground::GroundPlugin,
-            enemy::EnemyPlugin,
-        ))
-        .add_systems(Startup, setup_scene)
-        .insert_resource(paralax_background::ParallaxMonitor::default())
-        .add_systems(Update, paralax_background::monitor_performance);
+        app
+            // Configure window and camera
+            .add_systems(Startup, setup_scene)
+            .insert_resource(paralax_background::ParallaxMonitor::default())
+            
+            // Add all plugins in correct order
+            .add_plugins((
+                ResolutionPlugin,
+                GravityPlugin,
+                GroundPlugin,
+                AnimationPlugin,
+                PlayerPlugin,
+                EnemyPlugin,
+                HitboxPlugin,
+                paralax_background::ParallaxPlugin,
+            ))
+            
+            // Add performance monitoring
+            .add_systems(Update, paralax_background::monitor_performance);
     }
 }
 

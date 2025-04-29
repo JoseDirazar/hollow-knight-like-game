@@ -2,6 +2,7 @@ use crate::animations::{
     AnimationController, AnimationData, CharacterAnimations, CharacterState, CurrentAnimation,
 };
 use crate::ground::ground_collision;
+use crate::hitbox::{Hitbox, HitEvent};
 use crate::physics::Physics;
 use crate::player::Player;
 use crate::resolution; // Importar el sistema de física
@@ -78,7 +79,7 @@ impl Plugin for EnemyPlugin {
                     handle_damage,
                     check_death,
                     cleanup_dead_enemies,
-                    respawn_enemies, // Añadir el nuevo sistema de respawn
+                    respawn_enemies,
                 )
                     .after(ground_collision),
             );
@@ -131,9 +132,14 @@ fn update_enemy_movement(
                     scale_magnitude
                 };
             }
+            // println!(
+            //     "abs_distance: {:?},attack_range: {:?}",
+            //     abs_distance, enemy.attack_range
+            // );
 
             // Si está dentro del rango de ataque
-            if abs_distance < enemy.attack_range {
+            if abs_distance < enemy.attack_range + 70. {
+                // Harcoded value to separete enemy from the player to trigger attack animation
                 // Detener el movimiento y atacar
                 physics.velocity.x = 0.0;
                 if animation_controller.get_current_state() != CharacterState::Attacking
@@ -208,67 +214,85 @@ fn update_enemy_attack_hitbox(
         if enemy.is_dead {
             continue;
         }
-        
+
         let current_state = animation_controller.get_current_state();
 
-        // Si está atacando, crear o actualizar la hitbox
+        // If attacking, create or update the hitbox
         if current_state == CharacterState::Attacking {
-            // Crear o actualizar la hitbox de ataque
-            commands.entity(entity).insert(EnemyAttackHitbox {
+            // Calculate active frames based on animation
+            let frames = 23; // Total frames in attack animation
+            let hit_frame = (frames as f32 * 0.4) as usize; // Hit at 40% of animation
+            let active_frames = vec![hit_frame, hit_frame + 1, hit_frame + 2]; // Active for 3 frames
+
+            println!("[ENEMY] Creating hitbox for attack: damage={}, frames={}, hit_frame={}, active_frames={:?}", 
+                enemy.attack, frames, hit_frame, active_frames);
+
+            // Create or update the hitbox with larger size and better offset
+            commands.entity(entity).insert(Hitbox {
                 damage: enemy.attack,
-                active: true,
-                size: Vec2::new(50.0, 30.0), // Tamaño de la hitbox
+                active: false,
+                size: Vec2::new(200.0, 100.0), // Increased size
+                offset: Vec2::new(if enemy.facing_right { 100.0 } else { -100.0 }, 0.0), // Increased offset
+                frames_active: active_frames,
+                cooldown: Timer::from_seconds(0.3, TimerMode::Once),
+                hit_entities: Vec::new(),
+                owner_state: current_state,
             });
-        } else {
-            // Si no está atacando, remover la hitbox
-            commands.entity(entity).remove::<EnemyAttackHitbox>();
+        } else if current_state != CharacterState::Hurt {
+            // Only remove hitbox if not attacking and not hurt
+            commands.entity(entity).remove::<Hitbox>();
+            println!("[ENEMY] Removing hitbox");
         }
     }
 }
 
 // Sistema para manejar el daño
 fn handle_damage(
-    mut enemies: Query<(&mut Enemy, &Transform, &mut AnimationController)>,
-    mut players: Query<(&mut Player, &Transform, &mut AnimationController), Without<Enemy>>,
-    player_hitboxes: Query<(&AttackHitbox, &Transform)>,
-    enemy_hitboxes: Query<(&EnemyAttackHitbox, &Transform)>,
+    mut commands: Commands,
+    mut enemies: Query<(&mut Enemy, &mut AnimationController)>,
+    mut players: Query<(&mut Player, &mut AnimationController), Without<Enemy>>,
+    mut hit_events: EventReader<HitEvent>,
 ) {
-    // Manejar daño a los enemigos
-    for (mut enemy, enemy_transform, mut animation_controller) in &mut enemies {
-        if enemy.is_dead {
-            continue;
-        }
+    // Debug log for hit events
+    let event_count = hit_events.len();
+    println!("[DAMAGE] Processing {} hit events", event_count);
 
-        for (hitbox, hitbox_transform) in &player_hitboxes {
-            if hitbox.active {
-                let distance =
-                    (hitbox_transform.translation - enemy_transform.translation).length();
-                if distance < hitbox.size.x {
-                    // Aplicar daño al enemigo
-                    let damage = hitbox.damage - enemy.defense;
-                    if damage > 0.0 {
-                        enemy.health -= damage;
-                        animation_controller.change_state(CharacterState::Hurt);
-                    }
-                }
+    for hit_event in hit_events.read() {
+        println!("[DAMAGE] Processing hit event: source={:?}, target={:?}, damage={}", 
+            hit_event.source, hit_event.target, hit_event.damage);
+
+        // Handle damage to enemies
+        if let Ok((mut enemy, mut animation_controller)) = enemies.get_mut(hit_event.target) {
+            if enemy.is_dead {
+                println!("[DAMAGE] Target enemy is already dead");
+                continue;
+            }
+
+            // Apply damage to enemy
+            let damage = hit_event.damage - enemy.defense;
+            if damage > 0.0 {
+                println!("[DAMAGE] Enemy took {} damage ({} - {} defense)", 
+                    damage, hit_event.damage, enemy.defense);
+                enemy.health -= damage;
+                animation_controller.change_state(CharacterState::Hurt);
+            } else {
+                println!("[DAMAGE] Enemy blocked all damage ({} - {} defense)", 
+                    hit_event.damage, enemy.defense);
             }
         }
-    }
 
-    // Manejar daño al jugador
-    if let Ok((mut player, player_transform, mut animation_controller)) = players.get_single_mut() {
-        for (hitbox, hitbox_transform) in &enemy_hitboxes {
-            if hitbox.active {
-                let distance =
-                    (hitbox_transform.translation - player_transform.translation).length();
-                if distance < hitbox.size.x {
-                    // Aplicar daño al jugador
-                    let damage = hitbox.damage - player.defense;
-                    if damage > 0.0 {
-                        player.health -= damage;
-                        animation_controller.change_state(CharacterState::Hurt);
-                    }
-                }
+        // Handle damage to player
+        if let Ok((mut player, mut animation_controller)) = players.get_mut(hit_event.target) {
+            // Apply damage to player
+            let damage = hit_event.damage - player.defense;
+            if damage > 0.0 {
+                println!("[DAMAGE] Player took {} damage ({} - {} defense)", 
+                    damage, hit_event.damage, player.defense);
+                player.health -= damage;
+                animation_controller.change_state(CharacterState::Hurt);
+            } else {
+                println!("[DAMAGE] Player blocked all damage ({} - {} defense)", 
+                    hit_event.damage, player.defense);
             }
         }
     }
@@ -284,7 +308,6 @@ fn check_death(mut query: Query<(&mut Enemy, &mut AnimationController)>) {
         }
     }
 }
-
 
 fn respawn_enemies(
     mut commands: Commands,

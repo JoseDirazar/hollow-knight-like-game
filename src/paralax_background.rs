@@ -427,8 +427,8 @@ pub fn monitor_performance(
     monitor.last_update = time.elapsed_secs_f64();
 
     // Print debug info if needed
-    println!(
-        "FPS: {:.2}, Active layers: {}, Player pos: {:.2}, camera_position: {:.2}",
-        monitor.fps, monitor.active_layers, monitor.player_position, monitor.camera_position,
-    );
+    // println!(
+    //     "FPS: {:.2}, Active layers: {}, Player pos: {:.2}, camera_position: {:.2}",
+    //     monitor.fps, monitor.active_layers, monitor.player_position, monitor.camera_position,
+    // );
 }

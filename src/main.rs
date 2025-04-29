@@ -8,6 +8,7 @@ pub mod paralax_background;
 pub mod physics;
 pub mod player;
 pub mod resolution;
+pub mod hitbox;
 
 fn main() {
     App::new()
