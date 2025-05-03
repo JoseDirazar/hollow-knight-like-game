@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use crate::animations;
+use crate::enemy;
 use crate::ground;
 use crate::paralax_background;
 use crate::physics;
@@ -18,6 +19,7 @@ impl Plugin for GamePlugin {
             animations::AnimationPlugin,
             player::PlayerPlugin,
             ground::GroundPlugin,
+            enemy::EnemyPlugin,
         ))
         .add_systems(Startup, setup_scene)
         .insert_resource(paralax_background::ParallaxMonitor::default())

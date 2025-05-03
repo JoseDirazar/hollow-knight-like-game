@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 pub mod animations;
+pub mod enemy;
 pub mod game;
 pub mod ground;
 pub mod paralax_background;
