@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, sprite::Anchor};
 
 // Estado del personaje
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Hash)]
