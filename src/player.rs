@@ -1,7 +1,7 @@
 use crate::animations::{
     AnimationController, AnimationData, CharacterAnimations, CharacterState, CurrentAnimation,
 };
-use crate::enemy::{AttackHitbox, CollisionHitbox};
+use crate::enemy::{AttackHitbox, CollisionHitbox, Enemy};
 use crate::physics::Physics;
 use crate::resolution;
 
@@ -16,7 +16,8 @@ impl Plugin for PlayerPlugin {
             .add_systems(Update, process_player_input)
             .add_systems(Update, player_jump.after(process_player_input))
             .add_systems(Update, update_animations)
-            .add_systems(Update, update_attack_hitbox);
+            .add_systems(Update, update_attack_hitbox)
+            .add_systems(Update, handle_damage);
     }
 }
 
@@ -30,6 +31,69 @@ pub struct Player {
     pub defense: f32,
     pub speed: f32,
     pub facing_right: bool,
+}
+
+fn handle_damage(
+    mut player_query: Query<(
+        &mut Player,
+        &mut AnimationController,
+        &Children,
+        &mut Transform,
+    )>,
+    player_hitboxes: Query<(&CollisionHitbox, &GlobalTransform)>,
+    enemy_attack_hitboxes: Query<(&AttackHitbox, &GlobalTransform, &Parent)>,
+    enemy_query: Query<Entity, With<Enemy>>,
+) {
+    for (mut player, mut animation_controller, children, mut transform) in &mut player_query {
+        // Encuentra el hitbox del jugador
+        let mut player_hitbox_data = None;
+        for &child in children.iter() {
+            if let Ok((hitbox, transform)) = player_hitboxes.get(child) {
+                if hitbox.active {
+                    player_hitbox_data = Some((hitbox.size, transform.translation().truncate()));
+                    break;
+                }
+            }
+        }
+
+        let (player_size, player_pos) = match player_hitbox_data {
+            Some(data) => data,
+            None => continue,
+        };
+
+        let player_half_size = player_size / 2.0;
+
+        // Verificar colisión con los hitboxes de ataque de los enemigos
+        for (attack_hitbox, attack_transform, parent) in &enemy_attack_hitboxes {
+            if !attack_hitbox.active {
+                continue;
+            }
+
+            // Verificar que el hitbox pertenece a un enemigo
+            if !enemy_query.contains(parent.get()) {
+                continue;
+            }
+
+            let attack_pos = attack_transform.translation().truncate();
+            let attack_half_size = attack_hitbox.size / 2.0;
+
+            // Rect-Rect AABB collision check
+            let collision = (attack_pos.x - attack_half_size.x < player_pos.x + player_half_size.x)
+                && (attack_pos.x + attack_half_size.x > player_pos.x - player_half_size.x)
+                && (attack_pos.y - attack_half_size.y < player_pos.y + player_half_size.y)
+                && (attack_pos.y + attack_half_size.y > player_pos.y - player_half_size.y);
+
+            println!("HEALTH:: {}", player.health);
+            if collision {
+                let damage = attack_hitbox.damage - player.defense;
+                if damage > 0.0 {
+                    player.health -= damage;
+                    animation_controller.change_state(CharacterState::Hurt);
+                }
+                break; // evita múltiples daños por frame
+            }
+        }
+    }
 }
 
 fn can_move(state: &CharacterState) -> bool {
