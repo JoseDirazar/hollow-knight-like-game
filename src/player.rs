@@ -294,47 +294,49 @@ fn update_attack_hitbox(
             continue;
         }
 
-        // Calcular el progreso de la animación (0.0 a 1.0)
-        let animation_progress =
-            current_animation.current_frame as f32 / current_animation.total_frames as f32;
-
         // Solo crear nuevo hitbox si no hay uno activo y estamos en el rango de tiempo deseado
-        if is_attacking
-            && !has_active_hitbox
-            && animation_progress >= 0.3
-            && animation_progress <= 0.7
-        {
-            println!(
-                "Creating new hitbox at animation progress: {:.2}",
-                animation_progress
-            );
-            let damage = if current_state == CharacterState::Attacking {
-                player.attack
-            } else {
-                player.attack * 2.0
+        if is_attacking && !has_active_hitbox {
+            let should_create_hitbox = match current_state {
+                CharacterState::Attacking => current_animation.current_frame == 3,
+                CharacterState::ChargeAttacking => {
+                    current_animation.current_frame >= 4 && current_animation.current_frame <= 5
+                }
+                _ => false,
             };
 
-            let hitbox_size = if current_state == CharacterState::Attacking {
-                Vec2::new(41.5, 30.0)
-            } else {
-                Vec2::new(78.0, 30.0)
-            };
-            let offset_x = hitbox_size.x * 0.6;
+            if should_create_hitbox {
+                println!(
+                    "Creating new hitbox at frame: {}",
+                    current_animation.current_frame
+                );
+                let damage = if current_state == CharacterState::Attacking {
+                    player.attack
+                } else {
+                    player.attack * 2.0
+                };
 
-            // Crear entidad hija para la hitbox
-            commands.entity(entity).with_children(|parent| {
-                parent.spawn((
-                    AttackHitbox {
-                        damage,
-                        active: true,
-                        size: hitbox_size,
-                        timer: Timer::from_seconds(0.1, TimerMode::Once),
-                    },
-                    Transform::from_translation(Vec3::new(offset_x, 0., 0.)),
-                    Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
-                    MeshMaterial2d(materials.add(Color::from(WHITE))),
-                ));
-            });
+                let hitbox_size = if current_state == CharacterState::Attacking {
+                    Vec2::new(41.5, 30.0)
+                } else {
+                    Vec2::new(78.0, 30.0)
+                };
+                let offset_x = hitbox_size.x * 0.6;
+
+                // Crear entidad hija para la hitbox
+                commands.entity(entity).with_children(|parent| {
+                    parent.spawn((
+                        AttackHitbox {
+                            damage,
+                            active: true,
+                            size: hitbox_size,
+                            timer: Timer::from_seconds(0.1, TimerMode::Once),
+                        },
+                        Transform::from_translation(Vec3::new(offset_x, 0., 0.)),
+                        Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
+                        MeshMaterial2d(materials.add(Color::from(WHITE))),
+                    ));
+                });
+            }
         }
     }
 }

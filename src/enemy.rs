@@ -144,35 +144,46 @@ fn update_attack_hitbox(
         }
 
         // Solo crear nuevo hitbox si no hay uno activo y es el inicio del ataque
-        if is_attacking && !has_active_hitbox && current_animation.current_frame == 0 {
-            println!("Creating new hitbox for attack at frame 0");
-            let damage = if current_state == CharacterState::Attacking {
-                player.attack
-            } else {
-                player.attack * 2.0
+        if is_attacking && !has_active_hitbox {
+            let should_create_hitbox = match current_animation.current_frame {
+                4 => true,       // Primer ataque
+                13..=18 => true, // Segundo ataque (cargado)
+                _ => false,
             };
 
-            let hitbox_size = if current_state == CharacterState::Attacking {
-                Vec2::new(73., 30.0)
-            } else {
-                Vec2::new(78.0, 30.0)
-            };
-            let offset_x = hitbox_size.x * 0.6;
+            if should_create_hitbox {
+                println!(
+                    "Creating new hitbox for enemy attack at frame {}",
+                    current_animation.current_frame
+                );
+                let damage = if current_state == CharacterState::Attacking {
+                    player.attack
+                } else {
+                    player.attack * 2.0
+                };
 
-            // Crear entidad hija para la hitbox
-            commands.entity(entity).with_children(|parent| {
-                parent.spawn((
-                    AttackHitbox {
-                        damage,
-                        active: true,
-                        size: hitbox_size,
-                        timer: Timer::from_seconds(0.1, TimerMode::Once),
-                    },
-                    Transform::from_translation(Vec3::new(-offset_x, 0., 0.)),
-                    Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
-                    MeshMaterial2d(materials.add(Color::from(WHITE))),
-                ));
-            });
+                let hitbox_size = if current_state == CharacterState::Attacking {
+                    Vec2::new(73., 30.0)
+                } else {
+                    Vec2::new(78.0, 30.0)
+                };
+                let offset_x = hitbox_size.x * 0.6;
+
+                // Crear entidad hija para la hitbox
+                commands.entity(entity).with_children(|parent| {
+                    parent.spawn((
+                        AttackHitbox {
+                            damage,
+                            active: true,
+                            size: hitbox_size,
+                            timer: Timer::from_seconds(0.1, TimerMode::Once),
+                        },
+                        Transform::from_translation(Vec3::new(-offset_x, 0., 0.)),
+                        Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
+                        MeshMaterial2d(materials.add(Color::from(WHITE))),
+                    ));
+                });
+            }
         }
     }
 }
