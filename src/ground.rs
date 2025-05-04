@@ -143,7 +143,7 @@ pub fn ground_collision(
     mut characters_query: Query<(Entity, &mut Transform, &mut Physics), Without<Ground>>,
 ) {
     // Procesar cada entidad (jugador o enemigo) individualmente
-    for (entity, mut character_transform, mut physics) in characters_query.iter_mut() {
+    for (_entity, mut character_transform, mut physics) in characters_query.iter_mut() {
         physics.on_ground = false;
         let character_scale = character_transform.scale.y.abs();
 

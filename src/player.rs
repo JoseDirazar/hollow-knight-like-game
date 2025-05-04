@@ -5,6 +5,7 @@ use crate::enemy::{AttackHitbox, CollisionHitbox, Enemy};
 use crate::physics::Physics;
 use crate::resolution;
 
+use bevy::sprite::Anchor;
 use bevy::{color::palettes::css::WHITE, prelude::*};
 
 // Plugin principal del jugador
@@ -254,6 +255,7 @@ fn update_attack_hitbox(
     mut hitbox_query: Query<(Entity, &Parent, &mut AttackHitbox)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    resolution: Res<resolution::Resolution>,
 ) {
     // Primero actualizamos los timers y removemos hitboxes expiradas
     for (hitbox_entity, parent, mut hitbox) in &mut hitbox_query {
@@ -319,11 +321,11 @@ fn update_attack_hitbox(
                 };
 
                 let hitbox_size = if current_state == CharacterState::Attacking {
-                    Vec2::new(41.5, 30.0)
+                    Vec2::new(40., 30.0)
                 } else {
-                    Vec2::new(78.0, 30.0)
+                    Vec2::new(84.0, 30.0)
                 };
-                let offset_x = hitbox_size.x * 0.6;
+                let offset_x = hitbox_size.x * 0.5;
 
                 // Crear entidad hija para la hitbox
                 commands.entity(entity).with_children(|parent| {
@@ -335,8 +337,14 @@ fn update_attack_hitbox(
                             timer: Timer::from_seconds(0.1, TimerMode::Once),
                         },
                         Transform::from_translation(Vec3::new(offset_x, 0., 0.)),
+                        // .with_scale(Vec3::splat(resolution.pixel_ratio)),
                         Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
-                        MeshMaterial2d(materials.add(Color::from(WHITE))),
+                        MeshMaterial2d(materials.add(Color::Srgba(Srgba {
+                            red: 0.,
+                            green: 255.,
+                            blue: 0.,
+                            alpha: 0.1,
+                        }))),
                     ));
                 });
             }
@@ -361,7 +369,7 @@ fn setup_player(
     // Calcular la posición inicial del jugador
     // Nivel del suelo (30% desde abajo)
     let ground_height = -window_height * 0.3;
-    let player_y = ground_height + 90.0 * resolution.pixel_ratio;
+    let _player_y = ground_height + 90.0 * resolution.pixel_ratio;
 
     // Cargar texturas
     let idle_texture = asset_server.load("hero/Idle.png");
@@ -494,16 +502,14 @@ fn setup_player(
                 facing_right: true, // Inicialmente mirando a la derecha
                 hurt_timer: Timer::from_seconds(0.4, TimerMode::Once), // Timer para inmunidad
             },
-            // Componente de física para gravedad
             Physics {
                 velocity: Vec2::ZERO,
                 acceleration: Vec2::ZERO,
                 on_ground: true, // Comienza en el suelo
                 gravity_scale: 1.0,
             },
-            // Transformación - Posicionar jugador sobre el nivel del suelo
             Transform::from_xyz(0.0, 400., 0.0).with_scale(Vec3::splat(resolution.pixel_ratio)),
-            // Componentes de animación
+            Anchor::Center,
             AnimationController::default(),
             animations,
             initial_animation,
@@ -515,8 +521,14 @@ fn setup_player(
                     size: Vec2::new(64.0, 64.0),
                 },
                 Mesh2d(meshes.add(Rectangle::from_size(Vec2::new(32., 32.)))),
-                MeshMaterial2d(materials.add(Color::from(WHITE))),
-                Transform::default(),
+                MeshMaterial2d(materials.add(Color::Srgba(Srgba {
+                    red: 255.,
+                    green: 0.,
+                    blue: 0.,
+                    alpha: 0.1,
+                }))),
+                Transform::from_scale(Vec3::splat(resolution.pixel_ratio)),
+                Anchor::Center,
             ));
         });
 }

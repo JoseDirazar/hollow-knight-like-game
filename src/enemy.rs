@@ -7,6 +7,7 @@ use crate::player::Player;
 use crate::resolution;
 use bevy::color::palettes::css::WHITE;
 use bevy::prelude::*;
+use bevy::sprite::Anchor;
 
 // Componente para el enemigo
 #[derive(Component)]
@@ -102,7 +103,7 @@ fn update_attack_hitbox(
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     // Primero actualizamos los timers y removemos hitboxes expiradas
-    for (hitbox_entity, parent, mut hitbox) in &mut hitbox_query {
+    for (hitbox_entity, _parent, mut hitbox) in &mut hitbox_query {
         hitbox.timer.tick(time.delta());
         println!(
             "Hitbox timer: {:.2} remaining",
@@ -116,7 +117,7 @@ fn update_attack_hitbox(
         }
     }
 
-    for (entity, animation_controller, transform, player, current_animation) in &mut query {
+    for (entity, animation_controller, _transform, player, current_animation) in &mut query {
         let current_state = animation_controller.get_current_state();
         println!("Current player state: {:?}", current_state);
 
@@ -180,7 +181,12 @@ fn update_attack_hitbox(
                         },
                         Transform::from_translation(Vec3::new(-offset_x, 0., 0.)),
                         Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
-                        MeshMaterial2d(materials.add(Color::from(WHITE))),
+                        MeshMaterial2d(materials.add(Color::Srgba(Srgba {
+                            red: 200.,
+                            green: 200.,
+                            blue: 0.,
+                            alpha: 0.1,
+                        }))),
                     ));
                 });
             }
@@ -238,8 +244,14 @@ fn update_enemy_movement(
     )>,
     player_position: Res<PlayerPosition>,
 ) {
-    for (entity, mut enemy, mut transform, mut physics, mut animation_controller, mut animations) in
-        &mut query
+    for (
+        _entity,
+        mut enemy,
+        mut transform,
+        mut physics,
+        mut animation_controller,
+        mut _animations,
+    ) in &mut query
     {
         if enemy.is_dead || animation_controller.get_current_state() == CharacterState::Dead {
             physics.velocity = Vec2::ZERO;
@@ -318,10 +330,10 @@ fn update_enemy_animations(
 
         // No cambiar las animaciones si está atacando o herido
         if current_state == CharacterState::Attacking || current_state == CharacterState::Hurt {
-            if current_state == CharacterState::Attacking {
-                //TODO chequear que hacer al respecto del offset de la animacion de ataque, avtualemnte se utiliza el cropped version del ataque para acomodar el sprite pero recorta el sprite de la bola, si esta animacion de ataque y alguna otra puede haber se ejecuta donde no hay suelo se vera que esta recortado
-                transform.translation.y = transform.translation.y;
-            }
+            // if current_state == CharacterState::Attacking {
+            //     //TODO chequear que hacer al respecto del offset de la animacion de ataque, avtualemnte se utiliza el cropped version del ataque para acomodar el sprite pero recorta el sprite de la bola, si esta animacion de ataque y alguna otra puede haber se ejecuta donde no hay suelo se vera que esta recortado
+            //     transform.translation.y = transform.translation.y;
+            // }
             continue;
         }
 
@@ -355,7 +367,7 @@ fn handle_damage(
     attack_hitboxes: Query<(&AttackHitbox, &GlobalTransform, &Parent)>,
     player_query: Query<Entity, With<Player>>,
 ) {
-    for (mut enemy, mut animation_controller, children, mut transform) in &mut enemies {
+    for (mut enemy, mut animation_controller, children, mut _transform) in &mut enemies {
         if enemy.is_dead {
             continue;
         }
@@ -516,7 +528,7 @@ fn spawn_enemy(
                 texture: idle_texture.clone(),
                 atlas_layout: idle_atlas_layout.clone(),
                 frames: 8,
-                fps: 10.0,
+                fps: 14.0,
                 looping: true,
                 ping_pong: false,
             },
@@ -525,7 +537,7 @@ fn spawn_enemy(
                 texture: attack_texture.clone(),
                 atlas_layout: attack_atlas_layout.clone(),
                 frames: 23,
-                fps: 12.0,
+                fps: 14.0,
                 looping: false,
                 ping_pong: false,
             },
@@ -534,7 +546,7 @@ fn spawn_enemy(
                 texture: move_texture.clone(),
                 atlas_layout: move_atlas_layout.clone(),
                 frames: 10,
-                fps: 12.0,
+                fps: 14.0,
                 looping: true,
                 ping_pong: false,
             },
@@ -552,7 +564,7 @@ fn spawn_enemy(
                 texture: die_texture.clone(),
                 atlas_layout: die_atlas_layout.clone(),
                 frames: 24,
-                fps: 10.0,
+                fps: 14.0,
                 looping: false,
                 ping_pong: false,
             },
@@ -607,6 +619,7 @@ fn spawn_enemy(
                 scale_factor,
                 1.0,
             )),
+            Anchor::Center,
             AnimationController::default(),
             animations,
             initial_animation,
@@ -618,8 +631,14 @@ fn spawn_enemy(
                     size: Vec2::new(64.0, 64.0),
                 },
                 Mesh2d(meshes.add(Rectangle::from_size(Vec2::new(32., 32.)))),
-                MeshMaterial2d(materials.add(Color::from(WHITE))),
-                Transform::default(),
+                MeshMaterial2d(materials.add(Color::Srgba(Srgba {
+                    red: 0.,
+                    green: 0.,
+                    blue: 255.,
+                    alpha: 0.1,
+                }))),
+                Transform::from_scale(Vec3::new(scale_factor, scale_factor, 1.0)),
+                Anchor::Center,
             ));
         });
 }
