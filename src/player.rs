@@ -140,9 +140,12 @@ fn update_animations(
             continue;
         }
 
-        // Si está en el aire, usar animación de salto
-        if !physics.on_ground {
-            // Solo cambiar a salto si no viene de un ataque
+        // Si está en el aire y la velocidad vertical es negativa, usar animación de caída
+        if !physics.on_ground && physics.velocity.y < 0.0 {
+            animation_controller.change_state(CharacterState::Falling);
+        }
+        // Si está en el aire y la velocidad vertical es positiva o cero, usar animación de salto
+        else if !physics.on_ground {
             animation_controller.change_state(CharacterState::Jumping);
         }
         // Si está en el suelo y la velocidad horizontal es cero, usar idle
@@ -367,6 +370,7 @@ fn setup_player(
     let run_texture = asset_server.load("hero/Run.png");
     let jump_texture = asset_server.load("hero/Jump.png");
     let hurt_texture = asset_server.load("hero/Hurt.png"); // Agregar textura de hurt
+    let fall_texture = asset_server.load("hero/Fall.png");
 
     // Crear layouts de atlas
     let idle_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 11, 1, None, None);
@@ -375,6 +379,7 @@ fn setup_player(
     let run_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 8, 1, None, None);
     let jump_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 3, 1, None, None);
     let hurt_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 4, 1, None, None); // Layout para hurt
+    let fall_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 3, 1, None, None);
 
     let idle_atlas_layout = texture_atlas_layouts.add(idle_layout);
     let attack_atlas_layout = texture_atlas_layouts.add(attack_layout);
@@ -382,6 +387,7 @@ fn setup_player(
     let run_atlas_layout = texture_atlas_layouts.add(run_layout);
     let jump_atlas_layout = texture_atlas_layouts.add(jump_layout);
     let hurt_atlas_layout = texture_atlas_layouts.add(hurt_layout); // Atlas para hurt
+    let fall_atlas_layout = texture_atlas_layouts.add(fall_layout);
 
     // Crear datos de animación
     let animations = CharacterAnimations {
@@ -444,6 +450,16 @@ fn setup_player(
                 looping: false,
                 ping_pong: false,
             },
+            // Animación de caída
+            AnimationData {
+                state: CharacterState::Falling,
+                texture: fall_texture.clone(),
+                atlas_layout: fall_atlas_layout.clone(),
+                frames: 3,
+                fps: 10.0,
+                looping: true,
+                ping_pong: false,
+            },
         ],
     };
 
@@ -486,7 +502,7 @@ fn setup_player(
                 gravity_scale: 1.0,
             },
             // Transformación - Posicionar jugador sobre el nivel del suelo
-            Transform::from_xyz(0.0, player_y, 0.0).with_scale(Vec3::splat(resolution.pixel_ratio)),
+            Transform::from_xyz(0.0, 400., 0.0).with_scale(Vec3::splat(resolution.pixel_ratio)),
             // Componentes de animación
             AnimationController::default(),
             animations,

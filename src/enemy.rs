@@ -218,18 +218,29 @@ fn update_player_position(
     }
 }
 
-// Sistema para actualizar el movimiento del enemigo
+// Función para saber si el enemigo puede moverse o cambiar de estado
+fn can_enemy_move(state: &CharacterState) -> bool {
+    match state {
+        CharacterState::Attacking | CharacterState::ChargeAttacking | CharacterState::Hurt => false,
+        _ => true,
+    }
+}
+
 // Sistema para actualizar el movimiento del enemigo
 fn update_enemy_movement(
-    mut enemies: Query<(
+    mut query: Query<(
+        Entity,
         &mut Enemy,
         &mut Transform,
         &mut Physics,
         &mut AnimationController,
+        &mut CharacterAnimations,
     )>,
     player_position: Res<PlayerPosition>,
 ) {
-    for (mut enemy, mut transform, mut physics, mut animation_controller) in &mut enemies {
+    for (entity, mut enemy, mut transform, mut physics, mut animation_controller, mut animations) in
+        &mut query
+    {
         if enemy.is_dead || animation_controller.get_current_state() == CharacterState::Dead {
             physics.velocity = Vec2::ZERO;
             continue;
@@ -237,14 +248,18 @@ fn update_enemy_movement(
 
         let distance = player_position.position.x - transform.translation.x;
         let abs_distance = distance.abs();
+        let current_state = animation_controller.get_current_state();
 
         // Si el jugador está dentro del rango de detección
         if abs_distance < enemy.detection_range {
             // Determinar la dirección a la que debe mirar el enemigo
             let old_facing = enemy.facing_right;
             println!(
-                "distance: {}, player-position: {:?}, enemy-position: {}",
-                distance, player_position.position.x, transform.translation.x
+                "distance: {}, player-position: {:?}, enemy-position: {}, can-enemy-move: {:?}",
+                distance,
+                player_position.position.x,
+                transform.translation.x,
+                can_enemy_move(&current_state),
             );
             enemy.facing_right = player_position.position.x > transform.translation.x;
 
@@ -263,33 +278,25 @@ fn update_enemy_movement(
             if abs_distance < enemy.attack_range {
                 // Detener el movimiento y atacar
                 physics.velocity.x = 0.0;
-                if animation_controller.get_current_state() != CharacterState::Attacking
-                    && animation_controller.get_current_state() != CharacterState::Hurt
-                {
+                if can_enemy_move(&current_state) {
                     animation_controller.change_state(CharacterState::Attacking);
                 }
-            } else {
-                // Moverse hacia el jugador
-                physics.velocity.x = if distance > 0.0
-                    && animation_controller.get_current_state() != CharacterState::Attacking
-                {
+            } else if can_enemy_move(&current_state) {
+                // Moverse hacia el jugador solo si puede moverse
+                physics.velocity.x = if distance > 0.0 {
                     enemy.speed
                 } else {
                     -enemy.speed
                 };
-                if animation_controller.get_current_state() == CharacterState::Attacking {
-                    physics.velocity.x = 0.0;
-                }
-                if animation_controller.get_current_state() != CharacterState::Hurt {
-                    animation_controller.change_state(CharacterState::Running);
-                }
+                animation_controller.change_state(CharacterState::Running);
+            } else {
+                // Si no puede moverse, detener el movimiento horizontal
+                physics.velocity.x = 0.0;
             }
         } else {
             // Si el jugador está fuera del rango de detección, quedarse quieto
             physics.velocity.x = 0.0;
-            if animation_controller.get_current_state() != CharacterState::Attacking
-                && animation_controller.get_current_state() != CharacterState::Hurt
-            {
+            if can_enemy_move(&current_state) {
                 animation_controller.change_state(CharacterState::Idle);
             }
         }
@@ -312,7 +319,8 @@ fn update_enemy_animations(
         // No cambiar las animaciones si está atacando o herido
         if current_state == CharacterState::Attacking || current_state == CharacterState::Hurt {
             if current_state == CharacterState::Attacking {
-                transform.translation.y = transform.translation.y - 10.0;
+                //TODO chequear que hacer al respecto del offset de la animacion de ataque, avtualemnte se utiliza el cropped version del ataque para acomodar el sprite pero recorta el sprite de la bola, si esta animacion de ataque y alguna otra puede haber se ejecuta donde no hay suelo se vera que esta recortado
+                transform.translation.y = transform.translation.y;
             }
             continue;
         }
@@ -481,7 +489,7 @@ fn spawn_enemy(
     let enemy_y = ground_height + 90.0 * resolution.pixel_ratio;
 
     let idle_texture = asset_server.load("enemy/skeleton/skeletonIdle-Sheet64x64.png");
-    let attack_texture = asset_server.load("enemy/skeleton/skeletonAttack-Sheet146x64.png");
+    let attack_texture = asset_server.load("enemy/skeleton/skeletonAttack-cropped.png");
     let move_texture = asset_server.load("enemy/skeleton/skeletonMove-Sheet64x64.png");
     let hurt_texture = asset_server.load("enemy/skeleton/skeletonHurt-Sheet64x64.png");
     let die_texture = asset_server.load("enemy/skeleton/skeletonDie-Sheet118x64_all.png");
@@ -518,7 +526,7 @@ fn spawn_enemy(
                 atlas_layout: attack_atlas_layout.clone(),
                 frames: 23,
                 fps: 12.0,
-                looping: true,
+                looping: false,
                 ping_pong: false,
             },
             AnimationData {
@@ -581,7 +589,7 @@ fn spawn_enemy(
                 attack: 10.0,
                 defense: 5.0,
                 speed: 150.0,
-                attack_range: 73.0,
+                attack_range: 146.0,
                 detection_range: 400.0,
                 facing_right: false,
                 is_dead: false,

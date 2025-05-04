@@ -72,30 +72,5 @@ fn apply_physics(time: Res<Time>, mut query: Query<(&mut Transform, &mut Physics
 
         // Reiniciar aceleración después de aplicarla
         physics.acceleration = Vec2::ZERO;
-
-        // Ya no necesitamos esta colisión simple con el suelo, ahora se maneja en ground.rs
-        // if transform.translation.y <= 0.0 {
-        //    transform.translation.y = 0.0;
-        //    physics.velocity.y = 0.0;
-        //    physics.on_ground = true;
-        // } else {
-        //    physics.on_ground = false;
-        // }
     }
 }
-
-// Este sistema ahora está en player.rs para mantener la lógica de juego separada
-// Pero lo dejamos comentado aquí como referencia
-/*
-fn player_jump(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut query: Query<&mut Physics, With<crate::player::Player>>,
-) {
-    for mut physics in &mut query {
-        if keyboard.just_pressed(KeyCode::Space) && physics.on_ground {
-            physics.velocity.y = 500.0; // Fuerza de salto
-            physics.on_ground = false;
-        }
-    }
-}
-*/
