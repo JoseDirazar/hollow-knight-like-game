@@ -8,7 +8,6 @@ use crate::resolution;
 use bevy::color::palettes::css::WHITE;
 // Importar el sistema de física
 use bevy::prelude::*;
-use bevy::ui::update;
 
 // Componente para el enemigo
 #[derive(Component)]
@@ -34,6 +33,7 @@ pub struct AttackHitbox {
     pub size: Vec2,
     pub timer: Timer,
 }
+
 #[derive(Component)]
 pub struct EnemyHitbox {
     pub active: bool,

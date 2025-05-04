@@ -159,57 +159,91 @@ fn player_jump(
 
 fn update_attack_hitbox(
     mut commands: Commands,
-    mut query: Query<(Entity, &AnimationController, &Transform, &Player)>,
-    hitbox_query: Query<(Entity, &Parent), With<AttackHitbox>>,
+    time: Res<Time>,
+    mut query: Query<(
+        Entity,
+        &AnimationController,
+        &Transform,
+        &Player,
+        &CurrentAnimation,
+    )>,
+    mut hitbox_query: Query<(Entity, &Parent, &mut AttackHitbox)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    for (entity, animation_controller, transform, player) in &mut query {
+    // Primero actualizamos los timers y removemos hitboxes expiradas
+    for (hitbox_entity, parent, mut hitbox) in &mut hitbox_query {
+        hitbox.timer.tick(time.delta());
+        println!(
+            "Hitbox timer: {:.2} remaining",
+            hitbox.timer.remaining_secs()
+        );
+
+        if hitbox.timer.finished() {
+            println!("Hitbox timer finished, despawning hitbox");
+            hitbox.active = false;
+            commands.entity(hitbox_entity).despawn_recursive();
+        }
+    }
+
+    for (entity, animation_controller, transform, player, current_animation) in &mut query {
         let current_state = animation_controller.get_current_state();
+        println!("Current player state: {:?}", current_state);
 
         let is_attacking = matches!(
             current_state,
             CharacterState::Attacking | CharacterState::ChargeAttacking
         );
 
+        // Verificar si ya existe un hitbox activo
+        let has_active_hitbox = hitbox_query
+            .iter()
+            .any(|(_, parent, hitbox)| parent.get() == entity && hitbox.active);
+
+        println!("Has active hitbox: {}", has_active_hitbox);
+
         // Eliminar hitboxes antiguas si ya no está atacando
         if !is_attacking {
-            for (hitbox_entity, parent) in hitbox_query.iter() {
+            for (hitbox_entity, parent, _) in hitbox_query.iter() {
                 if parent.get() == entity {
+                    println!("Player not attacking, removing hitbox");
                     commands.entity(hitbox_entity).despawn_recursive();
                 }
             }
             continue;
         }
 
-        // Si está atacando
-        let damage = if current_state == CharacterState::Attacking {
-            player.attack
-        } else {
-            player.attack * 2.0
-        };
+        // Solo crear nuevo hitbox si no hay uno activo y es el inicio del ataque
+        if is_attacking && !has_active_hitbox && current_animation.current_frame == 0 {
+            println!("Creating new hitbox for attack at frame 0");
+            let damage = if current_state == CharacterState::Attacking {
+                player.attack
+            } else {
+                player.attack * 2.0
+            };
 
-        let hitbox_size = if current_state == CharacterState::Attacking {
-            Vec2::new(41.5, 30.0)
-        } else {
-            Vec2::new(78.0, 30.0)
-        };
-        let offset_x = hitbox_size.x * 0.6;
+            let hitbox_size = if current_state == CharacterState::Attacking {
+                Vec2::new(41.5, 30.0)
+            } else {
+                Vec2::new(78.0, 30.0)
+            };
+            let offset_x = hitbox_size.x * 0.6;
 
-        // Crear entidad hija para la hitbox
-        commands.entity(entity).with_children(|parent| {
-            parent.spawn((
-                AttackHitbox {
-                    damage,
-                    active: true,
-                    size: hitbox_size,
-                    timer: Timer::from_seconds(0.01, TimerMode::Once),
-                },
-                Transform::from_translation(Vec3::new(offset_x, 0., 0.)),
-                Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
-                MeshMaterial2d(materials.add(Color::from(WHITE))),
-            ));
-        });
+            // Crear entidad hija para la hitbox
+            commands.entity(entity).with_children(|parent| {
+                parent.spawn((
+                    AttackHitbox {
+                        damage,
+                        active: true,
+                        size: hitbox_size,
+                        timer: Timer::from_seconds(0.1, TimerMode::Once),
+                    },
+                    Transform::from_translation(Vec3::new(offset_x, 0., 0.)),
+                    Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
+                    MeshMaterial2d(materials.add(Color::from(WHITE))),
+                ));
+            });
+        }
     }
 }
 
@@ -307,7 +341,7 @@ fn setup_player(
     // Animación inicial (idle)
     let initial_animation = CurrentAnimation {
         current_frame: 0,
-        timer: Timer::from_seconds(0.1, TimerMode::Repeating),
+        timer: Timer::from_seconds(0.01, TimerMode::Repeating),
         total_frames: 11,
         looping: true,
         reverse_direction: false,
