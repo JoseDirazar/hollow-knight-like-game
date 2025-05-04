@@ -213,9 +213,20 @@ fn update_attack_hitbox(
             continue;
         }
 
-        // Solo crear nuevo hitbox si no hay uno activo y es el inicio del ataque
-        if is_attacking && !has_active_hitbox && current_animation.current_frame == 0 {
-            println!("Creating new hitbox for attack at frame 0");
+        // Calcular el progreso de la animación (0.0 a 1.0)
+        let animation_progress =
+            current_animation.current_frame as f32 / current_animation.total_frames as f32;
+
+        // Solo crear nuevo hitbox si no hay uno activo y estamos en el rango de tiempo deseado
+        if is_attacking
+            && !has_active_hitbox
+            && animation_progress >= 0.3
+            && animation_progress <= 0.7
+        {
+            println!(
+                "Creating new hitbox at animation progress: {:.2}",
+                animation_progress
+            );
             let damage = if current_state == CharacterState::Attacking {
                 player.attack
             } else {
