@@ -134,11 +134,16 @@ fn update_enemy_movement(
                 }
             } else {
                 // Moverse hacia el jugador
-                physics.velocity.x = if distance > 0.0 {
+                physics.velocity.x = if distance > 0.0
+                    && animation_controller.get_current_state() != CharacterState::Attacking
+                {
                     enemy.speed
                 } else {
                     -enemy.speed
                 };
+                if animation_controller.get_current_state() == CharacterState::Attacking {
+                    physics.velocity.x = 0.0;
+                }
                 if animation_controller.get_current_state() != CharacterState::Attacking
                     && animation_controller.get_current_state() != CharacterState::Hurt
                 {
@@ -163,11 +168,12 @@ fn update_enemy_animations(
     mut enemies: Query<(&mut AnimationController, &Physics, &Enemy, &mut Transform)>,
 ) {
     for (mut animation_controller, physics, enemy, mut transform) in &mut enemies {
+        let current_state = animation_controller.get_current_state();
+
         if enemy.is_dead {
+            transform.translation.y = transform.translation.y - 5.0;
             continue;
         }
-
-        let current_state = animation_controller.get_current_state();
 
         // No cambiar las animaciones si está atacando o herido
         if current_state == CharacterState::Attacking || current_state == CharacterState::Hurt {
@@ -210,7 +216,7 @@ fn handle_damage(
             if hitbox.active {
                 let distance =
                     (hitbox_transform.translation - enemy_transform.translation).length();
-                if distance < hitbox.size.x {
+                if distance * 0.3 < hitbox.size.x {
                     // Aplicar daño al enemigo
                     let damage = hitbox.damage - enemy.defense;
                     if damage > 0.0 {
@@ -229,7 +235,7 @@ fn check_death(mut query: Query<(&mut Enemy, &mut AnimationController)>) {
         if enemy.health <= 0.0 && !enemy.is_dead {
             enemy.is_dead = true;
             animation_controller.change_state(CharacterState::Dead);
-            enemy.death_timer = Timer::from_seconds(1.0, TimerMode::Once);
+            enemy.death_timer = Timer::from_seconds(10.0, TimerMode::Once);
         }
     }
 }
@@ -378,11 +384,11 @@ fn spawn_enemy(
             attack: 10.0,
             defense: 5.0,
             speed: 150.0,
-            attack_range: 50.0,
-            detection_range: 200.0,
+            attack_range: 73.0,
+            detection_range: 500.0,
             facing_right: true,
             is_dead: false,
-            death_timer: Timer::from_seconds(1.0, TimerMode::Once),
+            death_timer: Timer::from_seconds(10.0, TimerMode::Once),
         },
         Physics {
             velocity: Vec2::ZERO,
