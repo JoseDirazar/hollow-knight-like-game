@@ -2,7 +2,7 @@ use crate::animations::{
     AnimationController, AnimationData, CharacterAnimations, CharacterState, CurrentAnimation,
 };
 use crate::ground::ground_collision;
-use crate::physics::Physics;
+use crate::physics::{self, Physics};
 use crate::player::Player;
 use crate::resolution;
 use bevy::color::palettes::css::WHITE;
@@ -105,13 +105,8 @@ fn update_attack_hitbox(
     // Primero actualizamos los timers y removemos hitboxes expiradas
     for (hitbox_entity, _parent, mut hitbox) in &mut hitbox_query {
         hitbox.timer.tick(time.delta());
-        println!(
-            "Hitbox timer: {:.2} remaining",
-            hitbox.timer.remaining_secs()
-        );
 
         if hitbox.timer.finished() {
-            println!("Hitbox timer finished, despawning hitbox");
             hitbox.active = false;
             commands.entity(hitbox_entity).despawn_recursive();
         }
@@ -119,7 +114,6 @@ fn update_attack_hitbox(
 
     for (entity, animation_controller, _transform, player, current_animation) in &mut query {
         let current_state = animation_controller.get_current_state();
-        println!("Current player state: {:?}", current_state);
 
         let is_attacking = matches!(
             current_state,
@@ -131,13 +125,10 @@ fn update_attack_hitbox(
             .iter()
             .any(|(_, parent, hitbox)| parent.get() == entity && hitbox.active);
 
-        println!("Has active hitbox: {}", has_active_hitbox);
-
         // Eliminar hitboxes antiguas si ya no está atacando
         if !is_attacking {
             for (hitbox_entity, parent, _) in hitbox_query.iter() {
                 if parent.get() == entity {
-                    println!("Player not attacking, removing hitbox");
                     commands.entity(hitbox_entity).despawn_recursive();
                 }
             }
@@ -147,16 +138,12 @@ fn update_attack_hitbox(
         // Solo crear nuevo hitbox si no hay uno activo y es el inicio del ataque
         if is_attacking && !has_active_hitbox {
             let should_create_hitbox = match current_animation.current_frame {
-                4 => true,       // Primer ataque
-                13..=18 => true, // Segundo ataque (cargado)
+                4 => true,  // Primer ataque
+                13 => true, // Segundo ataque (cargado)
                 _ => false,
             };
 
             if should_create_hitbox {
-                println!(
-                    "Creating new hitbox for enemy attack at frame {}",
-                    current_animation.current_frame
-                );
                 let damage = if current_state == CharacterState::Attacking {
                     player.attack
                 } else {
@@ -266,13 +253,7 @@ fn update_enemy_movement(
         if abs_distance < enemy.detection_range {
             // Determinar la dirección a la que debe mirar el enemigo
             let old_facing = enemy.facing_right;
-            println!(
-                "distance: {}, player-position: {:?}, enemy-position: {}, can-enemy-move: {:?}",
-                distance,
-                player_position.position.x,
-                transform.translation.x,
-                can_enemy_move(&current_state),
-            );
+
             enemy.facing_right = player_position.position.x > transform.translation.x;
 
             // Solo actualizar la escala si cambió la dirección
@@ -362,12 +343,14 @@ fn handle_damage(
         &mut AnimationController,
         &Children,
         &mut Transform,
+        &mut Physics, // <-- Añadido para aplicar impulso
     )>,
     enemy_hitboxes: Query<(&CollisionHitbox, &GlobalTransform)>,
     attack_hitboxes: Query<(&AttackHitbox, &GlobalTransform, &Parent)>,
     player_query: Query<Entity, With<Player>>,
 ) {
-    for (mut enemy, mut animation_controller, children, mut _transform) in &mut enemies {
+    for (mut enemy, mut animation_controller, children, mut _transform, mut physics) in &mut enemies
+    {
         if enemy.is_dead {
             continue;
         }
@@ -392,7 +375,6 @@ fn handle_damage(
 
         // Obtener la entidad del jugador
         if let Ok(player_entity) = player_query.get_single() {
-            // Verificar colisión con los hitboxes de ataque del jugador
             for (attack_hitbox, attack_transform, parent) in &attack_hitboxes {
                 if !attack_hitbox.active || parent.get() != player_entity {
                     continue;
@@ -401,7 +383,6 @@ fn handle_damage(
                 let attack_pos = attack_transform.translation().truncate();
                 let attack_half_size = attack_hitbox.size / 2.0;
 
-                // Rect-Rect AABB collision check
                 let collision = (attack_pos.x - attack_half_size.x
                     < enemy_pos.x + enemy_half_size.x)
                     && (attack_pos.x + attack_half_size.x > enemy_pos.x - enemy_half_size.x)
@@ -413,8 +394,13 @@ fn handle_damage(
                     if damage > 0.0 {
                         enemy.health -= damage;
                         animation_controller.change_state(CharacterState::Hurt);
+
+                        // 🟡 Aplicar impulso físico: hacia atrás y hacia arriba
+                        let direction = (enemy_pos - attack_pos).normalize_or_zero(); // dirección del empuje
+                        physics.velocity += Vec2::new(direction.x * 2150.0, 120.0);
+                        physics.on_ground = false; // ya no está en el suelo
                     }
-                    break; // evita múltiples daños por frame
+                    break; // solo un golpe por frame
                 }
             }
         }

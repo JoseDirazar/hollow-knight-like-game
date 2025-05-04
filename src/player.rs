@@ -41,20 +41,21 @@ fn handle_damage(
         &mut AnimationController,
         &Children,
         &mut Transform,
+        &mut Physics, // <- Añadido
     )>,
     player_hitboxes: Query<(&CollisionHitbox, &GlobalTransform)>,
     enemy_attack_hitboxes: Query<(&AttackHitbox, &GlobalTransform, &Parent)>,
     enemy_query: Query<Entity, With<Enemy>>,
     time: Res<Time>,
 ) {
-    for (mut player, mut animation_controller, children, mut transform) in &mut player_query {
-        // Si el timer de hurt está activo, el jugador es inmune
+    for (mut player, mut animation_controller, children, mut _transform, mut physics) in
+        &mut player_query
+    {
         player.hurt_timer.tick(time.delta());
         if !player.hurt_timer.finished() {
             continue;
         }
 
-        // Encuentra el hitbox del jugador
         let mut player_hitbox_data = None;
         for &child in children.iter() {
             if let Ok((hitbox, transform)) = player_hitboxes.get(child) {
@@ -72,39 +73,32 @@ fn handle_damage(
 
         let player_half_size = player_size / 2.0;
 
-        // Verificar colisión con los hitboxes de ataque de los enemigos
         for (attack_hitbox, attack_transform, parent) in &enemy_attack_hitboxes {
-            if !attack_hitbox.active {
-                continue;
-            }
-
-            // Verificar que el hitbox pertenece a un enemigo
-            if !enemy_query.contains(parent.get()) {
+            if !attack_hitbox.active || !enemy_query.contains(parent.get()) {
                 continue;
             }
 
             let attack_pos = attack_transform.translation().truncate();
             let attack_half_size = attack_hitbox.size / 2.0;
 
-            // Rect-Rect AABB collision check
             let collision = (attack_pos.x - attack_half_size.x < player_pos.x + player_half_size.x)
                 && (attack_pos.x + attack_half_size.x > player_pos.x - player_half_size.x)
                 && (attack_pos.y - attack_half_size.y < player_pos.y + player_half_size.y)
                 && (attack_pos.y + attack_half_size.y > player_pos.y - player_half_size.y);
 
-            println!("HEALTH:: {}", player.health);
             if collision {
                 let damage = attack_hitbox.damage - player.defense;
                 if damage > 0.0 {
                     player.health -= damage;
                     animation_controller.change_state(CharacterState::Hurt);
-                    player.hurt_timer.reset(); // Reiniciar el timer de inmunidad
-                    println!(
-                        "PLAYER ANIMATION:: {:?}",
-                        animation_controller.get_current_state()
-                    )
+                    player.hurt_timer.reset();
+
+                    // 🟡 Aplicar impulso al jugador
+                    let direction = (player_pos - attack_pos).normalize_or_zero();
+                    physics.velocity += Vec2::new(direction.x * 150.0, 300.0);
+                    physics.on_ground = false;
                 }
-                break; // evita múltiples daños por frame
+                break;
             }
         }
     }
@@ -255,27 +249,20 @@ fn update_attack_hitbox(
     mut hitbox_query: Query<(Entity, &Parent, &mut AttackHitbox)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    resolution: Res<resolution::Resolution>,
+    _resolution: Res<resolution::Resolution>,
 ) {
     // Primero actualizamos los timers y removemos hitboxes expiradas
-    for (hitbox_entity, parent, mut hitbox) in &mut hitbox_query {
+    for (hitbox_entity, _parent, mut hitbox) in &mut hitbox_query {
         hitbox.timer.tick(time.delta());
-        println!(
-            "Hitbox timer: {:.2} remaining",
-            hitbox.timer.remaining_secs()
-        );
 
         if hitbox.timer.finished() {
-            println!("Hitbox timer finished, despawning hitbox");
             hitbox.active = false;
             commands.entity(hitbox_entity).despawn_recursive();
         }
     }
 
-    for (entity, animation_controller, transform, player, current_animation) in &mut query {
+    for (entity, animation_controller, _transform, player, current_animation) in &mut query {
         let current_state = animation_controller.get_current_state();
-        println!("Current player state: {:?}", current_state);
-
         let is_attacking = matches!(
             current_state,
             CharacterState::Attacking | CharacterState::ChargeAttacking
@@ -286,13 +273,10 @@ fn update_attack_hitbox(
             .iter()
             .any(|(_, parent, hitbox)| parent.get() == entity && hitbox.active);
 
-        println!("Has active hitbox: {}", has_active_hitbox);
-
         // Eliminar hitboxes antiguas si ya no está atacando
         if !is_attacking {
             for (hitbox_entity, parent, _) in hitbox_query.iter() {
                 if parent.get() == entity {
-                    println!("Player not attacking, removing hitbox");
                     commands.entity(hitbox_entity).despawn_recursive();
                 }
             }
@@ -303,17 +287,11 @@ fn update_attack_hitbox(
         if is_attacking && !has_active_hitbox {
             let should_create_hitbox = match current_state {
                 CharacterState::Attacking => current_animation.current_frame == 3,
-                CharacterState::ChargeAttacking => {
-                    current_animation.current_frame >= 4 && current_animation.current_frame <= 5
-                }
+                CharacterState::ChargeAttacking => current_animation.current_frame == 4,
                 _ => false,
             };
 
             if should_create_hitbox {
-                println!(
-                    "Creating new hitbox at frame: {}",
-                    current_animation.current_frame
-                );
                 let damage = if current_state == CharacterState::Attacking {
                     player.attack
                 } else {

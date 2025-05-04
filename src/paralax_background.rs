@@ -75,31 +75,31 @@ impl Default for ParallaxSettings {
             layer_configurations: vec![
                 LayerConfig {
                     path: "world/levels/1/1.png".to_string(),
-                    speed_factor: 0.1,  // Farthest background (nubes) moves very little (5% of camera movement)
+                    speed_factor: 0.1, // Farthest background (nubes) moves very little (5% of camera movement)
                     z_value: -40.0,
                     dimensions: Vec2::new(128., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/2.png".to_string(),
-                    speed_factor: 0.15,  // Distant clouds move slightly (10% of camera movement)
+                    speed_factor: 0.15, // Distant clouds move slightly (10% of camera movement)
                     z_value: -30.0,
                     dimensions: Vec2::new(144., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/3.png".to_string(),
-                    speed_factor: 0.20,  // Mountains (30% of camera movement)
+                    speed_factor: 0.20, // Mountains (30% of camera movement)
                     z_value: -20.0,
                     dimensions: Vec2::new(160., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/4.png".to_string(),
-                    speed_factor: 0.25,  // Forest (50% of camera movement)
+                    speed_factor: 0.25, // Forest (50% of camera movement)
                     z_value: -10.0,
                     dimensions: Vec2::new(320., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/5.png".to_string(),
-                    speed_factor: 0.30,  // Closest to foreground, moves the most (80% of camera movement)
+                    speed_factor: 0.30, // Closest to foreground, moves the most (80% of camera movement)
                     z_value: -5.0,
                     dimensions: Vec2::new(240., 240.),
                 },
@@ -155,7 +155,7 @@ fn setup_parallax_background(
         // Load the texture
         let texture = asset_server.load(&layer_config.path);
         let _parallax_scale_factor = scale_factor(window_width, layer_config.dimensions);
-        
+
         // Width of each sprite after scaling
         let scaled_width = layer_config.dimensions.x * static_background_scale_factor;
 
@@ -167,7 +167,7 @@ fn setup_parallax_background(
             } else {
                 -1..=1 // 3 instancias para el resto (-1, 0, 1)
             };
-            
+
             for i in instance_range {
                 let x_pos = i as f32 * scaled_width;
 
@@ -179,11 +179,7 @@ fn setup_parallax_background(
                     ParallaxLayer {
                         speed_factor: layer_config.speed_factor,
                         sprite_width: scaled_width,
-                        original_position: Vec3::new(
-                            x_pos,
-                            0.0,
-                            layer_config.z_value,
-                        ),
+                        original_position: Vec3::new(x_pos, 0.0, layer_config.z_value),
                         position_index: i,
                     },
                     Transform::from_xyz(x_pos, 0., layer_config.z_value).with_scale(Vec3::new(
@@ -221,22 +217,22 @@ fn update_parallax_background_recycled(
 ) {
     let window = windows.single();
     let window_width = window.width();
-    
+
     if let Ok(camera_transform) = camera_query.get_single() {
         let camera_x = camera_transform.translation.x;
-        
+
         for (mut transform, mut layer) in parallax_query.iter_mut() {
             // Calculate position based on parallax effect
             // Instead of moving the background by the full camera position,
             // we only move it by a fraction determined by the speed_factor
             let parallax_offset = camera_x * (1.0 - layer.speed_factor);
-            
+
             // Update position to be centered on camera but offset by parallax factor
             transform.translation.x = layer.original_position.x + parallax_offset;
-            
+
             // Check if this sprite is now off-screen
             let half_window = window_width / 2.0;
-            
+
             if transform.translation.x < camera_x - half_window - (layer.sprite_width / 2.0) {
                 // This sprite is off-screen to the left, move it to the right
                 // Determine how many sprite widths to move based on position index range
@@ -245,11 +241,11 @@ fn update_parallax_background_recycled(
                 } else {
                     2 // Capas especiales con 5 instancias (-2, -1, 0, 1, 2)
                 };
-                
+
                 // Move to the rightmost position - convertimos a f32 para evitar error de tipo
                 let movement = (2 * max_index + 1) as f32;
                 transform.translation.x += layer.sprite_width * movement;
-                
+
                 // Update position index
                 // Para las capas con rango -2..=2
                 if max_index == 2 {
@@ -274,11 +270,11 @@ fn update_parallax_background_recycled(
                         layer.position_index = 0;
                     }
                 }
-                
+
                 // Update original position
                 layer.original_position.x = transform.translation.x - parallax_offset;
-            } 
-            else if transform.translation.x > camera_x + half_window + (layer.sprite_width / 2.0) {
+            } else if transform.translation.x > camera_x + half_window + (layer.sprite_width / 2.0)
+            {
                 // This sprite is off-screen to the right, move it to the left
                 // Determine how many sprite widths to move based on position index range
                 let max_index = if layer.position_index >= -1 && layer.position_index <= 1 {
@@ -286,11 +282,11 @@ fn update_parallax_background_recycled(
                 } else {
                     2 // Capas especiales con 5 instancias (-2, -1, 0, 1, 2)
                 };
-                
+
                 // Move to the leftmost position - convertimos a f32 para evitar error de tipo
                 let movement = (2 * max_index + 1) as f32;
                 transform.translation.x -= layer.sprite_width * movement;
-                
+
                 // Update position index
                 // Para las capas con rango -2..=2
                 if max_index == 2 {
@@ -315,7 +311,7 @@ fn update_parallax_background_recycled(
                         layer.position_index = 0;
                     }
                 }
-                
+
                 // Update original position
                 layer.original_position.x = transform.translation.x - parallax_offset;
             }
@@ -427,8 +423,8 @@ pub fn monitor_performance(
     monitor.last_update = time.elapsed_secs_f64();
 
     // Print debug info if needed
-    println!(
-        "FPS: {:.2}, Active layers: {}, Player pos: {:.2}, camera_position: {:.2}",
-        monitor.fps, monitor.active_layers, monitor.player_position, monitor.camera_position,
-    );
+    // println!(
+    //     "FPS: {:.2}, Active layers: {}, Player pos: {:.2}, camera_position: {:.2}",
+    //     monitor.fps, monitor.active_layers, monitor.player_position, monitor.camera_position,
+    // );
 }
