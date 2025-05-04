@@ -6,7 +6,6 @@ use crate::physics::Physics;
 use crate::player::Player;
 use crate::resolution;
 use bevy::color::palettes::css::WHITE;
-// Importar el sistema de física
 use bevy::prelude::*;
 
 // Componente para el enemigo
@@ -35,7 +34,7 @@ pub struct AttackHitbox {
 }
 
 #[derive(Component)]
-pub struct EnemyHitbox {
+pub struct CollisionHitbox {
     pub active: bool,
     pub size: Vec2,
 }
@@ -141,7 +140,11 @@ fn update_enemy_movement(
         if abs_distance < enemy.detection_range {
             // Determinar la dirección a la que debe mirar el enemigo
             let old_facing = enemy.facing_right;
-            enemy.facing_right = distance > 0.0;
+            println!(
+                "distance: {}, player-position: {:?}, enemy-position: {}",
+                distance, player_position.position.x, transform.translation.x
+            );
+            enemy.facing_right = player_position.position.x > transform.translation.x;
 
             // Solo actualizar la escala si cambió la dirección
             if old_facing != enemy.facing_right {
@@ -175,9 +178,7 @@ fn update_enemy_movement(
                 if animation_controller.get_current_state() == CharacterState::Attacking {
                     physics.velocity.x = 0.0;
                 }
-                if animation_controller.get_current_state() != CharacterState::Attacking
-                    && animation_controller.get_current_state() != CharacterState::Hurt
-                {
+                if animation_controller.get_current_state() != CharacterState::Hurt {
                     animation_controller.change_state(CharacterState::Running);
                 }
             }
@@ -240,7 +241,7 @@ fn handle_damage(
         &Children,
         &mut Transform,
     )>,
-    enemy_hitboxes: Query<(&EnemyHitbox, &GlobalTransform)>,
+    enemy_hitboxes: Query<(&CollisionHitbox, &GlobalTransform)>,
     attack_hitboxes: Query<(&AttackHitbox, &GlobalTransform)>,
 ) {
     for (mut enemy, mut animation_controller, children, mut transform) in &mut enemies {
@@ -298,7 +299,7 @@ fn check_death(mut query: Query<(&mut Enemy, &mut AnimationController, &mut Tran
         if enemy.health <= 0.0 && !enemy.is_dead {
             enemy.is_dead = true;
             animation_controller.change_state(CharacterState::Dead);
-            enemy.death_timer = Timer::from_seconds(2.0, TimerMode::Once);
+            enemy.death_timer = Timer::from_seconds(3.0, TimerMode::Once);
             transform.translation.x -= 20.0;
         }
     }
@@ -409,7 +410,7 @@ fn spawn_enemy(
                 atlas_layout: attack_atlas_layout.clone(),
                 frames: 23,
                 fps: 12.0,
-                looping: false,
+                looping: true,
                 ping_pong: false,
             },
             AnimationData {
@@ -473,10 +474,10 @@ fn spawn_enemy(
                 defense: 5.0,
                 speed: 150.0,
                 attack_range: 73.0,
-                detection_range: 500.0,
-                facing_right: true,
+                detection_range: 400.0,
+                facing_right: false,
                 is_dead: false,
-                death_timer: Timer::from_seconds(2.0, TimerMode::Once),
+                death_timer: Timer::from_seconds(3.0, TimerMode::Once),
                 hurt_timer: Timer::from_seconds(0.3, TimerMode::Once),
             },
             Physics {
@@ -496,7 +497,7 @@ fn spawn_enemy(
         ))
         .with_children(|parent| {
             parent.spawn((
-                EnemyHitbox {
+                CollisionHitbox {
                     active: true,
                     size: Vec2::new(64.0, 64.0),
                 },

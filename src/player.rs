@@ -1,7 +1,7 @@
 use crate::animations::{
     AnimationController, AnimationData, CharacterAnimations, CharacterState, CurrentAnimation,
 };
-use crate::enemy::AttackHitbox;
+use crate::enemy::{AttackHitbox, CollisionHitbox};
 use crate::physics::Physics;
 use crate::resolution;
 
@@ -32,19 +32,11 @@ pub struct Player {
     pub facing_right: bool,
 }
 
-#[derive(Component)]
-pub struct AttackHitboxPosition {
-    pub translation: Vec2,
-}
-
 fn can_move(state: &CharacterState) -> bool {
     match state {
-        // Lista de estados en los que el personaje NO puede moverse
         CharacterState::Attacking => false,
         CharacterState::ChargeAttacking => false,
-        // Agrega cualquier otro estado que deba bloquear el movimiento
-
-        // En cualquier otro estado, el personaje puede moverse
+        CharacterState::Hurt => false,
         _ => true,
     }
 }
@@ -101,6 +93,7 @@ fn process_player_input(
         // Ataque con Z en lugar de Espacio
         if keyboard.just_pressed(KeyCode::KeyZ)
             && current_state != CharacterState::Attacking
+            && current_state != CharacterState::ChargeAttacking
             && current_state != CharacterState::Jumping
         {
             animation_controller.change_state(CharacterState::Attacking);
@@ -109,6 +102,7 @@ fn process_player_input(
         // Ataque cargado con V
         if keyboard.just_pressed(KeyCode::KeyV)
             && current_state != CharacterState::ChargeAttacking
+            && current_state != CharacterState::Attacking
             && current_state != CharacterState::Jumping
         {
             animation_controller.change_state(CharacterState::ChargeAttacking);
@@ -254,6 +248,8 @@ fn setup_player(
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     resolution: Res<resolution::Resolution>,
     windows: Query<&Window>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     // Get window dimensions to position player properly
     let window = windows.single();
@@ -348,37 +344,49 @@ fn setup_player(
     };
 
     // Crear entidad del jugador
-    commands.spawn((
-        // Sprite inicial
-        Sprite::from_atlas_image(
-            idle_texture,
-            TextureAtlas {
-                layout: idle_atlas_layout,
-                index: 0,
+    commands
+        .spawn((
+            // Sprite inicial
+            Sprite::from_atlas_image(
+                idle_texture,
+                TextureAtlas {
+                    layout: idle_atlas_layout,
+                    index: 0,
+                },
+            ),
+            // Estadísticas del jugador
+            Player {
+                name: "Hero".to_string(),
+                health: 100.0,
+                max_health: 100.0,
+                attack: 10.0,
+                defense: 5.0,
+                speed: 250.0,
+                facing_right: true, // Inicialmente mirando a la derecha
             },
-        ),
-        // Estadísticas del jugador
-        Player {
-            name: "Hero".to_string(),
-            health: 100.0,
-            max_health: 100.0,
-            attack: 10.0,
-            defense: 5.0,
-            speed: 250.0,
-            facing_right: true, // Inicialmente mirando a la derecha
-        },
-        // Componente de física para gravedad
-        Physics {
-            velocity: Vec2::ZERO,
-            acceleration: Vec2::ZERO,
-            on_ground: true, // Comienza en el suelo
-            gravity_scale: 1.0,
-        },
-        // Transformación - Posicionar jugador sobre el nivel del suelo
-        Transform::from_xyz(0.0, player_y, 0.0).with_scale(Vec3::splat(resolution.pixel_ratio)),
-        // Componentes de animación
-        AnimationController::default(),
-        animations,
-        initial_animation,
-    ));
+            // Componente de física para gravedad
+            Physics {
+                velocity: Vec2::ZERO,
+                acceleration: Vec2::ZERO,
+                on_ground: true, // Comienza en el suelo
+                gravity_scale: 1.0,
+            },
+            // Transformación - Posicionar jugador sobre el nivel del suelo
+            Transform::from_xyz(0.0, player_y, 0.0).with_scale(Vec3::splat(resolution.pixel_ratio)),
+            // Componentes de animación
+            AnimationController::default(),
+            animations,
+            initial_animation,
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                CollisionHitbox {
+                    active: true,
+                    size: Vec2::new(64.0, 64.0),
+                },
+                Mesh2d(meshes.add(Rectangle::from_size(Vec2::new(32., 32.)))),
+                MeshMaterial2d(materials.add(Color::from(WHITE))),
+                Transform::default(),
+            ));
+        });
 }
