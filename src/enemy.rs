@@ -4,9 +4,12 @@ use crate::animations::{
 use crate::ground::ground_collision;
 use crate::physics::Physics;
 use crate::player::Player;
-use crate::resolution; // Importar el sistema de física
+use crate::resolution;
+use bevy::color::palettes::css::WHITE;
+// Importar el sistema de física
 use bevy::prelude::*;
-use bevy::sprite::Anchor;
+use bevy::ui::update;
+
 // Componente para el enemigo
 #[derive(Component)]
 pub struct Enemy {
@@ -20,12 +23,19 @@ pub struct Enemy {
     pub facing_right: bool,
     pub is_dead: bool,
     pub death_timer: Timer,
+    pub hurt_timer: Timer,
 }
 
 // Componente para la hitbox de ataque
 #[derive(Component)]
 pub struct AttackHitbox {
     pub damage: f32,
+    pub active: bool,
+    pub size: Vec2,
+    pub timer: Timer,
+}
+#[derive(Component)]
+pub struct EnemyHitbox {
     pub active: bool,
     pub size: Vec2,
 }
@@ -70,9 +80,29 @@ impl Plugin for EnemyPlugin {
                     check_death,
                     cleanup_dead_enemies,
                     respawn_enemies, // Añadir el nuevo sistema de respawn
+                    update_enemy_states,
                 )
                     .after(ground_collision),
             );
+    }
+}
+
+fn update_enemy_states(
+    time: Res<Time>,
+    mut enemies: Query<(&mut Enemy, &mut AnimationController)>,
+) {
+    for (mut enemy, mut animation_controller) in &mut enemies {
+        if animation_controller.get_current_state() == CharacterState::Hurt {
+            enemy.hurt_timer.tick(time.delta());
+
+            if enemy.hurt_timer.finished() {
+                // Si el enemigo sigue vivo, volver a Idle
+                if !enemy.is_dead {
+                    animation_controller.change_state(CharacterState::Idle);
+                    enemy.hurt_timer.reset();
+                }
+            }
+        }
     }
 }
 
@@ -99,7 +129,8 @@ fn update_enemy_movement(
     player_position: Res<PlayerPosition>,
 ) {
     for (mut enemy, mut transform, mut physics, mut animation_controller) in &mut enemies {
-        if enemy.is_dead {
+        if enemy.is_dead || animation_controller.get_current_state() == CharacterState::Dead {
+            physics.velocity = Vec2::ZERO;
             continue;
         }
 
@@ -202,40 +233,73 @@ fn update_enemy_animations(
     }
 }
 
-// Sistema para manejar el daño
 fn handle_damage(
-    mut enemies: Query<(&mut Enemy, &Transform, &mut AnimationController)>,
-    hitboxes: Query<(&AttackHitbox, &Transform)>,
+    mut enemies: Query<(
+        &mut Enemy,
+        &mut AnimationController,
+        &Children,
+        &mut Transform,
+    )>,
+    enemy_hitboxes: Query<(&EnemyHitbox, &GlobalTransform)>,
+    attack_hitboxes: Query<(&AttackHitbox, &GlobalTransform)>,
 ) {
-    for (mut enemy, enemy_transform, mut animation_controller) in &mut enemies {
+    for (mut enemy, mut animation_controller, children, mut transform) in &mut enemies {
         if enemy.is_dead {
             continue;
         }
 
-        for (hitbox, hitbox_transform) in &hitboxes {
-            if hitbox.active {
-                let distance =
-                    (hitbox_transform.translation - enemy_transform.translation).length();
-                if distance * 0.3 < hitbox.size.x {
-                    // Aplicar daño al enemigo
-                    let damage = hitbox.damage - enemy.defense;
-                    if damage > 0.0 {
-                        enemy.health -= damage;
-                        animation_controller.change_state(CharacterState::Hurt);
-                    }
+        // Encuentra el hitbox del enemigo
+        let mut enemy_hitbox_data = None;
+        for &child in children.iter() {
+            if let Ok((hitbox, transform)) = enemy_hitboxes.get(child) {
+                if hitbox.active {
+                    enemy_hitbox_data = Some((hitbox.size, transform.translation().truncate()));
+                    break;
                 }
+            }
+        }
+
+        let (enemy_size, enemy_pos) = match enemy_hitbox_data {
+            Some(data) => data,
+            None => continue,
+        };
+
+        let enemy_half_size = enemy_size / 2.0;
+
+        for (attack_hitbox, attack_transform) in &attack_hitboxes {
+            if !attack_hitbox.active {
+                continue;
+            }
+
+            let attack_pos = attack_transform.translation().truncate();
+            let attack_half_size = attack_hitbox.size / 2.0;
+
+            // Rect-Rect AABB collision check
+            let collision = (attack_pos.x - attack_half_size.x < enemy_pos.x + enemy_half_size.x)
+                && (attack_pos.x + attack_half_size.x > enemy_pos.x - enemy_half_size.x)
+                && (attack_pos.y - attack_half_size.y < enemy_pos.y + enemy_half_size.y)
+                && (attack_pos.y + attack_half_size.y > enemy_pos.y - enemy_half_size.y);
+
+            if collision {
+                let damage = attack_hitbox.damage - enemy.defense;
+                if damage > 0.0 {
+                    enemy.health -= damage;
+                    animation_controller.change_state(CharacterState::Hurt);
+                }
+                break; // evita múltiples daños por frame
             }
         }
     }
 }
 
 // Sistema para verificar la muerte
-fn check_death(mut query: Query<(&mut Enemy, &mut AnimationController)>) {
-    for (mut enemy, mut animation_controller) in &mut query {
+fn check_death(mut query: Query<(&mut Enemy, &mut AnimationController, &mut Transform)>) {
+    for (mut enemy, mut animation_controller, mut transform) in &mut query {
         if enemy.health <= 0.0 && !enemy.is_dead {
             enemy.is_dead = true;
             animation_controller.change_state(CharacterState::Dead);
-            enemy.death_timer = Timer::from_seconds(10.0, TimerMode::Once);
+            enemy.death_timer = Timer::from_seconds(2.0, TimerMode::Once);
+            transform.translation.x -= 20.0;
         }
     }
 }
@@ -247,6 +311,8 @@ fn respawn_enemies(
     resolution: Res<resolution::Resolution>,
     windows: Query<&Window>,
     mut enemy_counter: ResMut<EnemyCounter>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     // Si tenemos menos enemigos de los deseados, crear nuevos
     if enemy_counter.current_count < enemy_counter.desired_count {
@@ -259,12 +325,31 @@ fn respawn_enemies(
                 &mut texture_atlas_layouts,
                 &resolution,
                 &windows,
+                &mut meshes,
+                &mut materials,
             );
             enemy_counter.current_count += 1;
         }
     }
 }
 
+fn cleanup_dead_enemies(
+    mut commands: Commands,
+    mut query: Query<(Entity, &mut Enemy)>,
+    time: Res<Time>,
+    mut enemy_counter: ResMut<EnemyCounter>,
+) {
+    for (entity, mut enemy) in &mut query {
+        if enemy.is_dead {
+            enemy.death_timer.tick(time.delta());
+            if enemy.death_timer.finished() {
+                commands.entity(entity).despawn_recursive();
+
+                enemy_counter.current_count -= 1;
+            }
+        }
+    }
+}
 // Función helper para crear un enemigo
 fn spawn_enemy(
     commands: &mut Commands,
@@ -272,6 +357,8 @@ fn spawn_enemy(
     texture_atlas_layouts: &mut Assets<TextureAtlasLayout>,
     resolution: &resolution::Resolution,
     windows: &Query<&Window>,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
 ) {
     let window = windows.single();
     let window_width = window.width();
@@ -370,41 +457,54 @@ fn spawn_enemy(
     let adjusted_y = enemy_y + ((scale_factor - 1.0) * 32.0); // 32 es la mitad de la altura original (64)
 
     // Crear entidad del enemigo con escala uniforme
-    commands.spawn((
-        Sprite::from_atlas_image(
-            idle_texture,
-            TextureAtlas {
-                layout: idle_atlas_layout,
-                index: 0,
+    commands
+        .spawn((
+            Sprite::from_atlas_image(
+                idle_texture,
+                TextureAtlas {
+                    layout: idle_atlas_layout,
+                    index: 0,
+                },
+            ),
+            Enemy {
+                health: 200.0,
+                max_health: 50.0,
+                attack: 10.0,
+                defense: 5.0,
+                speed: 150.0,
+                attack_range: 73.0,
+                detection_range: 500.0,
+                facing_right: true,
+                is_dead: false,
+                death_timer: Timer::from_seconds(2.0, TimerMode::Once),
+                hurt_timer: Timer::from_seconds(0.3, TimerMode::Once),
             },
-        ),
-        Enemy {
-            health: 50.0,
-            max_health: 50.0,
-            attack: 10.0,
-            defense: 5.0,
-            speed: 150.0,
-            attack_range: 73.0,
-            detection_range: 500.0,
-            facing_right: true,
-            is_dead: false,
-            death_timer: Timer::from_seconds(10.0, TimerMode::Once),
-        },
-        Physics {
-            velocity: Vec2::ZERO,
-            acceleration: Vec2::ZERO,
-            on_ground: true,
-            gravity_scale: 1.0,
-        },
-        Transform::from_xyz(spawn_x, adjusted_y, 5.0).with_scale(Vec3::new(
-            scale_factor,
-            scale_factor,
-            1.0,
-        )),
-        AnimationController::default(),
-        animations,
-        initial_animation,
-    ));
+            Physics {
+                velocity: Vec2::ZERO,
+                acceleration: Vec2::ZERO,
+                on_ground: true,
+                gravity_scale: 1.0,
+            },
+            Transform::from_xyz(spawn_x, adjusted_y, 5.0).with_scale(Vec3::new(
+                scale_factor,
+                scale_factor,
+                1.0,
+            )),
+            AnimationController::default(),
+            animations,
+            initial_animation,
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                EnemyHitbox {
+                    active: true,
+                    size: Vec2::new(64.0, 64.0),
+                },
+                Mesh2d(meshes.add(Rectangle::from_size(Vec2::new(32., 32.)))),
+                MeshMaterial2d(materials.add(Color::from(WHITE))),
+                Transform::default(),
+            ));
+        });
 }
 
 // Reemplazar el setup_enemy original con esta función que crea 2 enemigos
@@ -415,6 +515,8 @@ fn setup_enemies(
     resolution: Res<resolution::Resolution>,
     windows: Query<&Window>,
     mut enemy_counter: ResMut<EnemyCounter>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     // Generar 2 enemigos iniciales
     for _ in 0..enemy_counter.desired_count {
@@ -424,25 +526,11 @@ fn setup_enemies(
             &mut texture_atlas_layouts,
             &resolution,
             &windows,
+            &mut meshes,
+            &mut materials,
         );
         enemy_counter.current_count += 1;
     }
 }
 
 // Modificar el sistema de limpieza para actualizar el contador
-fn cleanup_dead_enemies(
-    mut commands: Commands,
-    mut query: Query<(Entity, &mut Enemy)>,
-    time: Res<Time>,
-    mut enemy_counter: ResMut<EnemyCounter>,
-) {
-    for (entity, mut enemy) in &mut query {
-        if enemy.is_dead {
-            enemy.death_timer.tick(time.delta());
-            if enemy.death_timer.finished() {
-                commands.entity(entity).despawn();
-                enemy_counter.current_count -= 1;
-            }
-        }
-    }
-}

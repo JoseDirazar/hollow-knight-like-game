@@ -4,12 +4,8 @@ use crate::animations::{
 use crate::enemy::AttackHitbox;
 use crate::physics::Physics;
 use crate::resolution;
-use bevy::sprite::MaterialMesh2dBundle;
-use bevy::{
-    color::palettes::css::{BLUE, GREEN, WHITE},
-    prelude::*,
-    sprite::AlphaMode2d,
-}; // Importar el sistema de física
+
+use bevy::{color::palettes::css::WHITE, prelude::*};
 
 // Plugin principal del jugador
 pub struct PlayerPlugin;
@@ -161,6 +157,62 @@ fn player_jump(
     }
 }
 
+fn update_attack_hitbox(
+    mut commands: Commands,
+    mut query: Query<(Entity, &AnimationController, &Transform, &Player)>,
+    hitbox_query: Query<(Entity, &Parent), With<AttackHitbox>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    for (entity, animation_controller, transform, player) in &mut query {
+        let current_state = animation_controller.get_current_state();
+
+        let is_attacking = matches!(
+            current_state,
+            CharacterState::Attacking | CharacterState::ChargeAttacking
+        );
+
+        // Eliminar hitboxes antiguas si ya no está atacando
+        if !is_attacking {
+            for (hitbox_entity, parent) in hitbox_query.iter() {
+                if parent.get() == entity {
+                    commands.entity(hitbox_entity).despawn_recursive();
+                }
+            }
+            continue;
+        }
+
+        // Si está atacando
+        let damage = if current_state == CharacterState::Attacking {
+            player.attack
+        } else {
+            player.attack * 2.0
+        };
+
+        let hitbox_size = if current_state == CharacterState::Attacking {
+            Vec2::new(41.5, 30.0)
+        } else {
+            Vec2::new(78.0, 30.0)
+        };
+        let offset_x = hitbox_size.x * 0.6;
+
+        // Crear entidad hija para la hitbox
+        commands.entity(entity).with_children(|parent| {
+            parent.spawn((
+                AttackHitbox {
+                    damage,
+                    active: true,
+                    size: hitbox_size,
+                    timer: Timer::from_seconds(0.01, TimerMode::Once),
+                },
+                Transform::from_translation(Vec3::new(offset_x, 0., 0.)),
+                Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
+                MeshMaterial2d(materials.add(Color::from(WHITE))),
+            ));
+        });
+    }
+}
+
 // Configuración inicial del jugador
 fn setup_player(
     mut commands: Commands,
@@ -295,65 +347,4 @@ fn setup_player(
         animations,
         initial_animation,
     ));
-}
-
-fn update_attack_hitbox(
-    mut commands: Commands,
-    mut query: Query<(Entity, &AnimationController, &Transform, &Player)>,
-    hitbox_query: Query<(Entity, &Parent), With<AttackHitbox>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-) {
-    for (entity, animation_controller, transform, player) in &mut query {
-        let current_state = animation_controller.get_current_state();
-
-        let is_attacking = matches!(
-            current_state,
-            CharacterState::Attacking | CharacterState::ChargeAttacking
-        );
-
-        // Eliminar hitboxes antiguas si ya no está atacando
-        if !is_attacking {
-            for (hitbox_entity, parent) in hitbox_query.iter() {
-                if parent.get() == entity {
-                    commands.entity(hitbox_entity).despawn_recursive();
-                }
-            }
-            continue;
-        }
-
-        // Si está atacando
-        let damage = if current_state == CharacterState::Attacking {
-            player.attack
-        } else {
-            player.attack * 2.0
-        };
-
-        let hitbox_size = Vec2::new(90.0, 30.0);
-        let offset_x = hitbox_size.x / 2.0;
-
-        let local_position = Vec3::new(
-            if player.facing_right {
-                offset_x
-            } else {
-                -offset_x
-            },
-            0.0,
-            0.0,
-        );
-        println!("local_position: {}", local_position);
-        // Crear entidad hija para la hitbox
-        commands.entity(entity).with_children(|parent| {
-            parent.spawn((
-                AttackHitbox {
-                    damage,
-                    active: true,
-                    size: hitbox_size,
-                },
-                Transform::from_translation(Vec3::new(offset_x, 0., 0.)),
-                Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
-                MeshMaterial2d(materials.add(Color::from(WHITE))),
-            ));
-        });
-    }
 }
