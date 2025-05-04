@@ -31,6 +31,7 @@ pub struct Player {
     pub defense: f32,
     pub speed: f32,
     pub facing_right: bool,
+    pub hurt_timer: Timer,
 }
 
 fn handle_damage(
@@ -43,8 +44,15 @@ fn handle_damage(
     player_hitboxes: Query<(&CollisionHitbox, &GlobalTransform)>,
     enemy_attack_hitboxes: Query<(&AttackHitbox, &GlobalTransform, &Parent)>,
     enemy_query: Query<Entity, With<Enemy>>,
+    time: Res<Time>,
 ) {
     for (mut player, mut animation_controller, children, mut transform) in &mut player_query {
+        // Si el timer de hurt está activo, el jugador es inmune
+        player.hurt_timer.tick(time.delta());
+        if !player.hurt_timer.finished() {
+            continue;
+        }
+
         // Encuentra el hitbox del jugador
         let mut player_hitbox_data = None;
         for &child in children.iter() {
@@ -89,6 +97,11 @@ fn handle_damage(
                 if damage > 0.0 {
                     player.health -= damage;
                     animation_controller.change_state(CharacterState::Hurt);
+                    player.hurt_timer.reset(); // Reiniciar el timer de inmunidad
+                    println!(
+                        "PLAYER ANIMATION:: {:?}",
+                        animation_controller.get_current_state()
+                    )
                 }
                 break; // evita múltiples daños por frame
             }
@@ -106,13 +119,23 @@ fn can_move(state: &CharacterState) -> bool {
 }
 
 // Sistema separado para actualizar las animaciones según el estado físico
-fn update_animations(mut query: Query<(&mut AnimationController, &Physics, &Player)>) {
-    for (mut animation_controller, physics, _player) in &mut query {
+fn update_animations(
+    mut query: Query<(&mut AnimationController, &Physics, &Player)>,
+    time: Res<Time>,
+) {
+    for (mut animation_controller, physics, player) in &mut query {
         let current_state = animation_controller.get_current_state();
 
-        // No cambiar las animaciones si está atacando
+        // Si está en estado Hurt y el timer ha terminado, volver a Idle
+        if current_state == CharacterState::Hurt && player.hurt_timer.finished() {
+            animation_controller.change_state(CharacterState::Idle);
+            continue;
+        }
+
+        // No cambiar las animaciones si está atacando o herido
         if current_state == CharacterState::Attacking
             || current_state == CharacterState::ChargeAttacking
+            || current_state == CharacterState::Hurt
         {
             continue;
         }
@@ -329,20 +352,23 @@ fn setup_player(
     let attack_texture = asset_server.load("hero/Attack1.png");
     let charge_attack_texture = asset_server.load("hero/Attack2.png");
     let run_texture = asset_server.load("hero/Run.png");
-    let jump_texture = asset_server.load("hero/Jump.png"); // Nueva textura para salto
+    let jump_texture = asset_server.load("hero/Jump.png");
+    let hurt_texture = asset_server.load("hero/Hurt.png"); // Agregar textura de hurt
 
     // Crear layouts de atlas
     let idle_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 11, 1, None, None);
     let attack_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 7, 1, None, None);
     let charge_attack_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 7, 1, None, None);
     let run_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 8, 1, None, None);
-    let jump_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 3, 1, None, None); // Layout para salto
+    let jump_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 3, 1, None, None);
+    let hurt_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 4, 1, None, None); // Layout para hurt
 
     let idle_atlas_layout = texture_atlas_layouts.add(idle_layout);
     let attack_atlas_layout = texture_atlas_layouts.add(attack_layout);
     let charge_attack_attlas_layout = texture_atlas_layouts.add(charge_attack_layout);
     let run_atlas_layout = texture_atlas_layouts.add(run_layout);
-    let jump_atlas_layout = texture_atlas_layouts.add(jump_layout); // Atlas para salto
+    let jump_atlas_layout = texture_atlas_layouts.add(jump_layout);
+    let hurt_atlas_layout = texture_atlas_layouts.add(hurt_layout); // Atlas para hurt
 
     // Crear datos de animación
     let animations = CharacterAnimations {
@@ -363,8 +389,8 @@ fn setup_player(
                 texture: attack_texture.clone(),
                 atlas_layout: attack_atlas_layout.clone(),
                 frames: 7,
-                fps: 20.0,      // Un poco más rápido que idle
-                looping: false, // La animación de ataque no se repite
+                fps: 20.0,
+                looping: false,
                 ping_pong: false,
             },
             AnimationData {
@@ -391,8 +417,18 @@ fn setup_player(
                 texture: jump_texture.clone(),
                 atlas_layout: jump_atlas_layout.clone(),
                 frames: 3,
-                fps: 18.0,     // Un poco más lento que correr
-                looping: true, // Loop para mantener la animación mientras está en el aire
+                fps: 18.0,
+                looping: true,
+                ping_pong: false,
+            },
+            // Animación de hurt
+            AnimationData {
+                state: CharacterState::Hurt,
+                texture: hurt_texture.clone(),
+                atlas_layout: hurt_atlas_layout.clone(),
+                frames: 4,
+                fps: 10.0,
+                looping: false,
                 ping_pong: false,
             },
         ],
@@ -427,6 +463,7 @@ fn setup_player(
                 defense: 5.0,
                 speed: 250.0,
                 facing_right: true, // Inicialmente mirando a la derecha
+                hurt_timer: Timer::from_seconds(0.4, TimerMode::Once), // Timer para inmunidad
             },
             // Componente de física para gravedad
             Physics {
