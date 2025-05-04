@@ -1,7 +1,7 @@
 use crate::animations::{
     AnimationController, AnimationData, CharacterAnimations, CharacterState, CurrentAnimation,
 };
-use crate::enemy::AttackHitbox;
+use crate::enemy::{AttackHitbox, CollisionHitbox, Enemy};
 use crate::physics::Physics;
 use crate::resolution;
 
@@ -16,7 +16,8 @@ impl Plugin for PlayerPlugin {
             .add_systems(Update, process_player_input)
             .add_systems(Update, player_jump.after(process_player_input))
             .add_systems(Update, update_animations)
-            .add_systems(Update, update_attack_hitbox);
+            .add_systems(Update, update_attack_hitbox)
+            .add_systems(Update, handle_damage);
     }
 }
 
@@ -30,33 +31,111 @@ pub struct Player {
     pub defense: f32,
     pub speed: f32,
     pub facing_right: bool,
+    pub hurt_timer: Timer,
 }
 
-#[derive(Component)]
-pub struct AttackHitboxPosition {
-    pub translation: Vec2,
+fn handle_damage(
+    mut player_query: Query<(
+        &mut Player,
+        &mut AnimationController,
+        &Children,
+        &mut Transform,
+    )>,
+    player_hitboxes: Query<(&CollisionHitbox, &GlobalTransform)>,
+    enemy_attack_hitboxes: Query<(&AttackHitbox, &GlobalTransform, &Parent)>,
+    enemy_query: Query<Entity, With<Enemy>>,
+    time: Res<Time>,
+) {
+    for (mut player, mut animation_controller, children, mut transform) in &mut player_query {
+        // Si el timer de hurt está activo, el jugador es inmune
+        player.hurt_timer.tick(time.delta());
+        if !player.hurt_timer.finished() {
+            continue;
+        }
+
+        // Encuentra el hitbox del jugador
+        let mut player_hitbox_data = None;
+        for &child in children.iter() {
+            if let Ok((hitbox, transform)) = player_hitboxes.get(child) {
+                if hitbox.active {
+                    player_hitbox_data = Some((hitbox.size, transform.translation().truncate()));
+                    break;
+                }
+            }
+        }
+
+        let (player_size, player_pos) = match player_hitbox_data {
+            Some(data) => data,
+            None => continue,
+        };
+
+        let player_half_size = player_size / 2.0;
+
+        // Verificar colisión con los hitboxes de ataque de los enemigos
+        for (attack_hitbox, attack_transform, parent) in &enemy_attack_hitboxes {
+            if !attack_hitbox.active {
+                continue;
+            }
+
+            // Verificar que el hitbox pertenece a un enemigo
+            if !enemy_query.contains(parent.get()) {
+                continue;
+            }
+
+            let attack_pos = attack_transform.translation().truncate();
+            let attack_half_size = attack_hitbox.size / 2.0;
+
+            // Rect-Rect AABB collision check
+            let collision = (attack_pos.x - attack_half_size.x < player_pos.x + player_half_size.x)
+                && (attack_pos.x + attack_half_size.x > player_pos.x - player_half_size.x)
+                && (attack_pos.y - attack_half_size.y < player_pos.y + player_half_size.y)
+                && (attack_pos.y + attack_half_size.y > player_pos.y - player_half_size.y);
+
+            println!("HEALTH:: {}", player.health);
+            if collision {
+                let damage = attack_hitbox.damage - player.defense;
+                if damage > 0.0 {
+                    player.health -= damage;
+                    animation_controller.change_state(CharacterState::Hurt);
+                    player.hurt_timer.reset(); // Reiniciar el timer de inmunidad
+                    println!(
+                        "PLAYER ANIMATION:: {:?}",
+                        animation_controller.get_current_state()
+                    )
+                }
+                break; // evita múltiples daños por frame
+            }
+        }
+    }
 }
 
 fn can_move(state: &CharacterState) -> bool {
     match state {
-        // Lista de estados en los que el personaje NO puede moverse
         CharacterState::Attacking => false,
         CharacterState::ChargeAttacking => false,
-        // Agrega cualquier otro estado que deba bloquear el movimiento
-
-        // En cualquier otro estado, el personaje puede moverse
+        CharacterState::Hurt => false,
         _ => true,
     }
 }
 
 // Sistema separado para actualizar las animaciones según el estado físico
-fn update_animations(mut query: Query<(&mut AnimationController, &Physics, &Player)>) {
-    for (mut animation_controller, physics, _player) in &mut query {
+fn update_animations(
+    mut query: Query<(&mut AnimationController, &Physics, &Player)>,
+    time: Res<Time>,
+) {
+    for (mut animation_controller, physics, player) in &mut query {
         let current_state = animation_controller.get_current_state();
 
-        // No cambiar las animaciones si está atacando
+        // Si está en estado Hurt y el timer ha terminado, volver a Idle
+        if current_state == CharacterState::Hurt && player.hurt_timer.finished() {
+            animation_controller.change_state(CharacterState::Idle);
+            continue;
+        }
+
+        // No cambiar las animaciones si está atacando o herido
         if current_state == CharacterState::Attacking
             || current_state == CharacterState::ChargeAttacking
+            || current_state == CharacterState::Hurt
         {
             continue;
         }
@@ -101,6 +180,7 @@ fn process_player_input(
         // Ataque con Z en lugar de Espacio
         if keyboard.just_pressed(KeyCode::KeyZ)
             && current_state != CharacterState::Attacking
+            && current_state != CharacterState::ChargeAttacking
             && current_state != CharacterState::Jumping
         {
             animation_controller.change_state(CharacterState::Attacking);
@@ -109,6 +189,7 @@ fn process_player_input(
         // Ataque cargado con V
         if keyboard.just_pressed(KeyCode::KeyV)
             && current_state != CharacterState::ChargeAttacking
+            && current_state != CharacterState::Attacking
             && current_state != CharacterState::Jumping
         {
             animation_controller.change_state(CharacterState::ChargeAttacking);
@@ -265,6 +346,8 @@ fn setup_player(
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     resolution: Res<resolution::Resolution>,
     windows: Query<&Window>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     // Get window dimensions to position player properly
     let window = windows.single();
@@ -280,20 +363,23 @@ fn setup_player(
     let attack_texture = asset_server.load("hero/Attack1.png");
     let charge_attack_texture = asset_server.load("hero/Attack2.png");
     let run_texture = asset_server.load("hero/Run.png");
-    let jump_texture = asset_server.load("hero/Jump.png"); // Nueva textura para salto
+    let jump_texture = asset_server.load("hero/Jump.png");
+    let hurt_texture = asset_server.load("hero/Hurt.png"); // Agregar textura de hurt
 
     // Crear layouts de atlas
     let idle_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 11, 1, None, None);
     let attack_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 7, 1, None, None);
     let charge_attack_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 7, 1, None, None);
     let run_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 8, 1, None, None);
-    let jump_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 3, 1, None, None); // Layout para salto
+    let jump_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 3, 1, None, None);
+    let hurt_layout = TextureAtlasLayout::from_grid(UVec2::splat(180), 4, 1, None, None); // Layout para hurt
 
     let idle_atlas_layout = texture_atlas_layouts.add(idle_layout);
     let attack_atlas_layout = texture_atlas_layouts.add(attack_layout);
     let charge_attack_attlas_layout = texture_atlas_layouts.add(charge_attack_layout);
     let run_atlas_layout = texture_atlas_layouts.add(run_layout);
-    let jump_atlas_layout = texture_atlas_layouts.add(jump_layout); // Atlas para salto
+    let jump_atlas_layout = texture_atlas_layouts.add(jump_layout);
+    let hurt_atlas_layout = texture_atlas_layouts.add(hurt_layout); // Atlas para hurt
 
     // Crear datos de animación
     let animations = CharacterAnimations {
@@ -314,8 +400,8 @@ fn setup_player(
                 texture: attack_texture.clone(),
                 atlas_layout: attack_atlas_layout.clone(),
                 frames: 7,
-                fps: 20.0,      // Un poco más rápido que idle
-                looping: false, // La animación de ataque no se repite
+                fps: 20.0,
+                looping: false,
                 ping_pong: false,
             },
             AnimationData {
@@ -342,8 +428,18 @@ fn setup_player(
                 texture: jump_texture.clone(),
                 atlas_layout: jump_atlas_layout.clone(),
                 frames: 3,
-                fps: 18.0,     // Un poco más lento que correr
-                looping: true, // Loop para mantener la animación mientras está en el aire
+                fps: 18.0,
+                looping: true,
+                ping_pong: false,
+            },
+            // Animación de hurt
+            AnimationData {
+                state: CharacterState::Hurt,
+                texture: hurt_texture.clone(),
+                atlas_layout: hurt_atlas_layout.clone(),
+                frames: 4,
+                fps: 10.0,
+                looping: false,
                 ping_pong: false,
             },
         ],
@@ -359,37 +455,50 @@ fn setup_player(
     };
 
     // Crear entidad del jugador
-    commands.spawn((
-        // Sprite inicial
-        Sprite::from_atlas_image(
-            idle_texture,
-            TextureAtlas {
-                layout: idle_atlas_layout,
-                index: 0,
+    commands
+        .spawn((
+            // Sprite inicial
+            Sprite::from_atlas_image(
+                idle_texture,
+                TextureAtlas {
+                    layout: idle_atlas_layout,
+                    index: 0,
+                },
+            ),
+            // Estadísticas del jugador
+            Player {
+                name: "Hero".to_string(),
+                health: 100.0,
+                max_health: 100.0,
+                attack: 10.0,
+                defense: 5.0,
+                speed: 250.0,
+                facing_right: true, // Inicialmente mirando a la derecha
+                hurt_timer: Timer::from_seconds(0.4, TimerMode::Once), // Timer para inmunidad
             },
-        ),
-        // Estadísticas del jugador
-        Player {
-            name: "Hero".to_string(),
-            health: 100.0,
-            max_health: 100.0,
-            attack: 10.0,
-            defense: 5.0,
-            speed: 250.0,
-            facing_right: true, // Inicialmente mirando a la derecha
-        },
-        // Componente de física para gravedad
-        Physics {
-            velocity: Vec2::ZERO,
-            acceleration: Vec2::ZERO,
-            on_ground: true, // Comienza en el suelo
-            gravity_scale: 1.0,
-        },
-        // Transformación - Posicionar jugador sobre el nivel del suelo
-        Transform::from_xyz(0.0, player_y, 0.0).with_scale(Vec3::splat(resolution.pixel_ratio)),
-        // Componentes de animación
-        AnimationController::default(),
-        animations,
-        initial_animation,
-    ));
+            // Componente de física para gravedad
+            Physics {
+                velocity: Vec2::ZERO,
+                acceleration: Vec2::ZERO,
+                on_ground: true, // Comienza en el suelo
+                gravity_scale: 1.0,
+            },
+            // Transformación - Posicionar jugador sobre el nivel del suelo
+            Transform::from_xyz(0.0, player_y, 0.0).with_scale(Vec3::splat(resolution.pixel_ratio)),
+            // Componentes de animación
+            AnimationController::default(),
+            animations,
+            initial_animation,
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                CollisionHitbox {
+                    active: true,
+                    size: Vec2::new(64.0, 64.0),
+                },
+                Mesh2d(meshes.add(Rectangle::from_size(Vec2::new(32., 32.)))),
+                MeshMaterial2d(materials.add(Color::from(WHITE))),
+                Transform::default(),
+            ));
+        });
 }

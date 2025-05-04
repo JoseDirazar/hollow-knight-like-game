@@ -6,7 +6,6 @@ use crate::physics::Physics;
 use crate::player::Player;
 use crate::resolution;
 use bevy::color::palettes::css::WHITE;
-// Importar el sistema de física
 use bevy::prelude::*;
 
 // Componente para el enemigo
@@ -35,7 +34,7 @@ pub struct AttackHitbox {
 }
 
 #[derive(Component)]
-pub struct EnemyHitbox {
+pub struct CollisionHitbox {
     pub active: bool,
     pub size: Vec2,
 }
@@ -81,9 +80,100 @@ impl Plugin for EnemyPlugin {
                     cleanup_dead_enemies,
                     respawn_enemies, // Añadir el nuevo sistema de respawn
                     update_enemy_states,
+                    update_attack_hitbox,
                 )
                     .after(ground_collision),
             );
+    }
+}
+
+fn update_attack_hitbox(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(
+        Entity,
+        &AnimationController,
+        &Transform,
+        &Enemy,
+        &CurrentAnimation,
+    )>,
+    mut hitbox_query: Query<(Entity, &Parent, &mut AttackHitbox), Without<Enemy>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    // Primero actualizamos los timers y removemos hitboxes expiradas
+    for (hitbox_entity, parent, mut hitbox) in &mut hitbox_query {
+        hitbox.timer.tick(time.delta());
+        println!(
+            "Hitbox timer: {:.2} remaining",
+            hitbox.timer.remaining_secs()
+        );
+
+        if hitbox.timer.finished() {
+            println!("Hitbox timer finished, despawning hitbox");
+            hitbox.active = false;
+            commands.entity(hitbox_entity).despawn_recursive();
+        }
+    }
+
+    for (entity, animation_controller, transform, player, current_animation) in &mut query {
+        let current_state = animation_controller.get_current_state();
+        println!("Current player state: {:?}", current_state);
+
+        let is_attacking = matches!(
+            current_state,
+            CharacterState::Attacking | CharacterState::ChargeAttacking
+        );
+
+        // Verificar si ya existe un hitbox activo
+        let has_active_hitbox = hitbox_query
+            .iter()
+            .any(|(_, parent, hitbox)| parent.get() == entity && hitbox.active);
+
+        println!("Has active hitbox: {}", has_active_hitbox);
+
+        // Eliminar hitboxes antiguas si ya no está atacando
+        if !is_attacking {
+            for (hitbox_entity, parent, _) in hitbox_query.iter() {
+                if parent.get() == entity {
+                    println!("Player not attacking, removing hitbox");
+                    commands.entity(hitbox_entity).despawn_recursive();
+                }
+            }
+            continue;
+        }
+
+        // Solo crear nuevo hitbox si no hay uno activo y es el inicio del ataque
+        if is_attacking && !has_active_hitbox && current_animation.current_frame == 0 {
+            println!("Creating new hitbox for attack at frame 0");
+            let damage = if current_state == CharacterState::Attacking {
+                player.attack
+            } else {
+                player.attack * 2.0
+            };
+
+            let hitbox_size = if current_state == CharacterState::Attacking {
+                Vec2::new(73., 30.0)
+            } else {
+                Vec2::new(78.0, 30.0)
+            };
+            let offset_x = hitbox_size.x * 0.6;
+
+            // Crear entidad hija para la hitbox
+            commands.entity(entity).with_children(|parent| {
+                parent.spawn((
+                    AttackHitbox {
+                        damage,
+                        active: true,
+                        size: hitbox_size,
+                        timer: Timer::from_seconds(0.1, TimerMode::Once),
+                    },
+                    Transform::from_translation(Vec3::new(-offset_x, 0., 0.)),
+                    Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
+                    MeshMaterial2d(materials.add(Color::from(WHITE))),
+                ));
+            });
+        }
     }
 }
 
@@ -141,7 +231,11 @@ fn update_enemy_movement(
         if abs_distance < enemy.detection_range {
             // Determinar la dirección a la que debe mirar el enemigo
             let old_facing = enemy.facing_right;
-            enemy.facing_right = distance > 0.0;
+            println!(
+                "distance: {}, player-position: {:?}, enemy-position: {}",
+                distance, player_position.position.x, transform.translation.x
+            );
+            enemy.facing_right = player_position.position.x > transform.translation.x;
 
             // Solo actualizar la escala si cambió la dirección
             if old_facing != enemy.facing_right {
@@ -175,9 +269,7 @@ fn update_enemy_movement(
                 if animation_controller.get_current_state() == CharacterState::Attacking {
                     physics.velocity.x = 0.0;
                 }
-                if animation_controller.get_current_state() != CharacterState::Attacking
-                    && animation_controller.get_current_state() != CharacterState::Hurt
-                {
+                if animation_controller.get_current_state() != CharacterState::Hurt {
                     animation_controller.change_state(CharacterState::Running);
                 }
             }
@@ -240,8 +332,9 @@ fn handle_damage(
         &Children,
         &mut Transform,
     )>,
-    enemy_hitboxes: Query<(&EnemyHitbox, &GlobalTransform)>,
-    attack_hitboxes: Query<(&AttackHitbox, &GlobalTransform)>,
+    enemy_hitboxes: Query<(&CollisionHitbox, &GlobalTransform)>,
+    attack_hitboxes: Query<(&AttackHitbox, &GlobalTransform, &Parent)>,
+    player_query: Query<Entity, With<Player>>,
 ) {
     for (mut enemy, mut animation_controller, children, mut transform) in &mut enemies {
         if enemy.is_dead {
@@ -266,27 +359,32 @@ fn handle_damage(
 
         let enemy_half_size = enemy_size / 2.0;
 
-        for (attack_hitbox, attack_transform) in &attack_hitboxes {
-            if !attack_hitbox.active {
-                continue;
-            }
-
-            let attack_pos = attack_transform.translation().truncate();
-            let attack_half_size = attack_hitbox.size / 2.0;
-
-            // Rect-Rect AABB collision check
-            let collision = (attack_pos.x - attack_half_size.x < enemy_pos.x + enemy_half_size.x)
-                && (attack_pos.x + attack_half_size.x > enemy_pos.x - enemy_half_size.x)
-                && (attack_pos.y - attack_half_size.y < enemy_pos.y + enemy_half_size.y)
-                && (attack_pos.y + attack_half_size.y > enemy_pos.y - enemy_half_size.y);
-
-            if collision {
-                let damage = attack_hitbox.damage - enemy.defense;
-                if damage > 0.0 {
-                    enemy.health -= damage;
-                    animation_controller.change_state(CharacterState::Hurt);
+        // Obtener la entidad del jugador
+        if let Ok(player_entity) = player_query.get_single() {
+            // Verificar colisión con los hitboxes de ataque del jugador
+            for (attack_hitbox, attack_transform, parent) in &attack_hitboxes {
+                if !attack_hitbox.active || parent.get() != player_entity {
+                    continue;
                 }
-                break; // evita múltiples daños por frame
+
+                let attack_pos = attack_transform.translation().truncate();
+                let attack_half_size = attack_hitbox.size / 2.0;
+
+                // Rect-Rect AABB collision check
+                let collision = (attack_pos.x - attack_half_size.x
+                    < enemy_pos.x + enemy_half_size.x)
+                    && (attack_pos.x + attack_half_size.x > enemy_pos.x - enemy_half_size.x)
+                    && (attack_pos.y - attack_half_size.y < enemy_pos.y + enemy_half_size.y)
+                    && (attack_pos.y + attack_half_size.y > enemy_pos.y - enemy_half_size.y);
+
+                if collision {
+                    let damage = attack_hitbox.damage - enemy.defense;
+                    if damage > 0.0 {
+                        enemy.health -= damage;
+                        animation_controller.change_state(CharacterState::Hurt);
+                    }
+                    break; // evita múltiples daños por frame
+                }
             }
         }
     }
@@ -298,7 +396,7 @@ fn check_death(mut query: Query<(&mut Enemy, &mut AnimationController, &mut Tran
         if enemy.health <= 0.0 && !enemy.is_dead {
             enemy.is_dead = true;
             animation_controller.change_state(CharacterState::Dead);
-            enemy.death_timer = Timer::from_seconds(2.0, TimerMode::Once);
+            enemy.death_timer = Timer::from_seconds(3.0, TimerMode::Once);
             transform.translation.x -= 20.0;
         }
     }
@@ -409,7 +507,7 @@ fn spawn_enemy(
                 atlas_layout: attack_atlas_layout.clone(),
                 frames: 23,
                 fps: 12.0,
-                looping: false,
+                looping: true,
                 ping_pong: false,
             },
             AnimationData {
@@ -473,10 +571,10 @@ fn spawn_enemy(
                 defense: 5.0,
                 speed: 150.0,
                 attack_range: 73.0,
-                detection_range: 500.0,
-                facing_right: true,
+                detection_range: 400.0,
+                facing_right: false,
                 is_dead: false,
-                death_timer: Timer::from_seconds(2.0, TimerMode::Once),
+                death_timer: Timer::from_seconds(3.0, TimerMode::Once),
                 hurt_timer: Timer::from_seconds(0.3, TimerMode::Once),
             },
             Physics {
@@ -496,7 +594,7 @@ fn spawn_enemy(
         ))
         .with_children(|parent| {
             parent.spawn((
-                EnemyHitbox {
+                CollisionHitbox {
                     active: true,
                     size: Vec2::new(64.0, 64.0),
                 },
