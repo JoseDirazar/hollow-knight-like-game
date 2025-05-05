@@ -2,10 +2,9 @@ use crate::animations::{
     AnimationController, AnimationData, CharacterAnimations, CharacterState, CurrentAnimation,
 };
 use crate::ground::ground_collision;
-use crate::physics::{self, Physics};
+use crate::physics::Physics;
 use crate::player::Player;
 use crate::resolution;
-use bevy::color::palettes::css::WHITE;
 use bevy::prelude::*;
 use bevy::sprite::Anchor;
 
@@ -40,13 +39,11 @@ pub struct CollisionHitbox {
     pub size: Vec2,
 }
 
-// Recurso para almacenar la posición del jugador
 #[derive(Resource, Default)]
 struct PlayerPosition {
     position: Vec3,
 }
 
-// Agregar este recurso para rastrear enemigos activos
 #[derive(Resource)]
 pub struct EnemyCounter {
     pub current_count: usize,
@@ -62,7 +59,6 @@ impl Default for EnemyCounter {
     }
 }
 
-// Plugin principal del enemigo
 pub struct EnemyPlugin;
 
 impl Plugin for EnemyPlugin {
@@ -200,7 +196,6 @@ fn update_enemy_states(
     }
 }
 
-// Sistema para actualizar la posición del jugador
 fn update_player_position(
     player: Query<&Transform, With<Player>>,
     mut player_position: ResMut<PlayerPosition>,
@@ -211,7 +206,6 @@ fn update_player_position(
     }
 }
 
-// Función para saber si el enemigo puede moverse o cambiar de estado
 fn can_enemy_move(state: &CharacterState) -> bool {
     match state {
         CharacterState::Attacking | CharacterState::ChargeAttacking | CharacterState::Hurt => false,
@@ -219,7 +213,6 @@ fn can_enemy_move(state: &CharacterState) -> bool {
     }
 }
 
-// Sistema para actualizar el movimiento del enemigo
 fn update_enemy_movement(
     mut query: Query<(
         Entity,
@@ -295,8 +288,6 @@ fn update_enemy_movement(
         }
     }
 }
-
-// Sistema para actualizar las animaciones del enemigo
 
 fn update_enemy_animations(
     mut enemies: Query<(&mut AnimationController, &Physics, &Enemy, &mut Transform)>,
@@ -407,7 +398,6 @@ fn handle_damage(
     }
 }
 
-// Sistema para verificar la muerte
 fn check_death(mut query: Query<(&mut Enemy, &mut AnimationController, &mut Transform)>) {
     for (mut enemy, mut animation_controller, mut transform) in &mut query {
         if enemy.health <= 0.0 && !enemy.is_dead {
@@ -465,7 +455,7 @@ fn cleanup_dead_enemies(
         }
     }
 }
-// Función helper para crear un enemigo
+
 fn spawn_enemy(
     commands: &mut Commands,
     asset_server: &AssetServer,
@@ -629,7 +619,6 @@ fn spawn_enemy(
         });
 }
 
-// Reemplazar el setup_enemy original con esta función que crea 2 enemigos
 fn setup_enemies(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -654,5 +643,3 @@ fn setup_enemies(
         enemy_counter.current_count += 1;
     }
 }
-
-// Modificar el sistema de limpieza para actualizar el contador

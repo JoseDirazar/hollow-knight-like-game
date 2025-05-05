@@ -5,8 +5,8 @@ use crate::enemy::{AttackHitbox, CollisionHitbox, Enemy};
 use crate::physics::Physics;
 use crate::resolution;
 
+use bevy::prelude::*;
 use bevy::sprite::Anchor;
-use bevy::{color::palettes::css::WHITE, prelude::*};
 
 // Plugin principal del jugador
 pub struct PlayerPlugin;
@@ -33,207 +33,6 @@ pub struct Player {
     pub speed: f32,
     pub facing_right: bool,
     pub hurt_timer: Timer,
-}
-
-fn handle_damage(
-    mut player_query: Query<(
-        &mut Player,
-        &mut AnimationController,
-        &Children,
-        &mut Transform,
-        &mut Physics, // <- Añadido
-    )>,
-    player_hitboxes: Query<(&CollisionHitbox, &GlobalTransform)>,
-    enemy_attack_hitboxes: Query<(&AttackHitbox, &GlobalTransform, &Parent)>,
-    enemy_query: Query<Entity, With<Enemy>>,
-    time: Res<Time>,
-) {
-    for (mut player, mut animation_controller, children, mut _transform, mut physics) in
-        &mut player_query
-    {
-        player.hurt_timer.tick(time.delta());
-        if !player.hurt_timer.finished() {
-            continue;
-        }
-
-        let mut player_hitbox_data = None;
-        for &child in children.iter() {
-            if let Ok((hitbox, transform)) = player_hitboxes.get(child) {
-                if hitbox.active {
-                    player_hitbox_data = Some((hitbox.size, transform.translation().truncate()));
-                    break;
-                }
-            }
-        }
-
-        let (player_size, player_pos) = match player_hitbox_data {
-            Some(data) => data,
-            None => continue,
-        };
-
-        let player_half_size = player_size / 2.0;
-
-        for (attack_hitbox, attack_transform, parent) in &enemy_attack_hitboxes {
-            if !attack_hitbox.active || !enemy_query.contains(parent.get()) {
-                continue;
-            }
-
-            let attack_pos = attack_transform.translation().truncate();
-            let attack_half_size = attack_hitbox.size / 2.0;
-
-            let collision = (attack_pos.x - attack_half_size.x < player_pos.x + player_half_size.x)
-                && (attack_pos.x + attack_half_size.x > player_pos.x - player_half_size.x)
-                && (attack_pos.y - attack_half_size.y < player_pos.y + player_half_size.y)
-                && (attack_pos.y + attack_half_size.y > player_pos.y - player_half_size.y);
-
-            if collision {
-                let damage = attack_hitbox.damage - player.defense;
-                if damage > 0.0 {
-                    player.health -= damage;
-                    animation_controller.change_state(CharacterState::Hurt);
-                    player.hurt_timer.reset();
-
-                    // 🟡 Aplicar impulso al jugador
-                    let direction = (player_pos - attack_pos).normalize_or_zero();
-                    physics.velocity += Vec2::new(direction.x * 150.0, 300.0);
-                    physics.on_ground = false;
-                }
-                break;
-            }
-        }
-    }
-}
-
-fn can_move(state: &CharacterState) -> bool {
-    match state {
-        CharacterState::Attacking => false,
-        CharacterState::ChargeAttacking => false,
-        CharacterState::Hurt => false,
-        _ => true,
-    }
-}
-
-// Sistema separado para actualizar las animaciones según el estado físico
-fn update_animations(
-    mut query: Query<(&mut AnimationController, &Physics, &Player)>,
-    time: Res<Time>,
-) {
-    for (mut animation_controller, physics, player) in &mut query {
-        let current_state = animation_controller.get_current_state();
-
-        // Si está en estado Hurt y el timer ha terminado, volver a Idle
-        if current_state == CharacterState::Hurt && player.hurt_timer.finished() {
-            animation_controller.change_state(CharacterState::Idle);
-            continue;
-        }
-
-        // No cambiar las animaciones si está atacando o herido
-        if current_state == CharacterState::Attacking
-            || current_state == CharacterState::ChargeAttacking
-            || current_state == CharacterState::Hurt
-        {
-            continue;
-        }
-
-        // Si está en el aire y la velocidad vertical es negativa, usar animación de caída
-        if !physics.on_ground && physics.velocity.y < 0.0 {
-            animation_controller.change_state(CharacterState::Falling);
-        }
-        // Si está en el aire y la velocidad vertical es positiva o cero, usar animación de salto
-        else if !physics.on_ground {
-            animation_controller.change_state(CharacterState::Jumping);
-        }
-        // Si está en el suelo y la velocidad horizontal es cero, usar idle
-        else if physics.velocity.x.abs() < 0.1 {
-            if current_state != CharacterState::Idle {
-                animation_controller.change_state(CharacterState::Idle);
-            }
-        }
-        // Si está en el suelo y se está moviendo, usar animación de correr
-        else if physics.on_ground {
-            if current_state != CharacterState::Running {
-                animation_controller.change_state(CharacterState::Running);
-            }
-        }
-    }
-}
-
-fn process_player_input(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    _time: Res<Time>,
-    mut query: Query<
-        (
-            &mut AnimationController,
-            &mut Player,
-            &mut Transform,
-            &mut Physics,
-        ),
-        With<Player>,
-    >,
-) {
-    for (mut animation_controller, mut player, mut transform, mut physics) in &mut query {
-        let current_state = animation_controller.get_current_state();
-        let can_move_now = can_move(&current_state);
-
-        // Ataque con Z en lugar de Espacio
-        if keyboard.just_pressed(KeyCode::KeyZ)
-            && current_state != CharacterState::Attacking
-            && current_state != CharacterState::ChargeAttacking
-            && current_state != CharacterState::Jumping
-        {
-            animation_controller.change_state(CharacterState::Attacking);
-        }
-
-        // Ataque cargado con V
-        if keyboard.just_pressed(KeyCode::KeyV)
-            && current_state != CharacterState::ChargeAttacking
-            && current_state != CharacterState::Attacking
-            && current_state != CharacterState::Jumping
-        {
-            animation_controller.change_state(CharacterState::ChargeAttacking);
-        }
-
-        // Solo aplicar movimiento horizontal si puede moverse
-        if can_move_now {
-            // Manejar movimiento a la derecha
-            if keyboard.pressed(KeyCode::ArrowRight) {
-                player.facing_right = true;
-                physics.velocity.x = player.speed;
-            }
-            // Manejar movimiento a la izquierda
-            else if keyboard.pressed(KeyCode::ArrowLeft) {
-                player.facing_right = false;
-                physics.velocity.x = -player.speed;
-            }
-            // Si no se presiona ninguna tecla de movimiento, detener el movimiento horizontal
-            else {
-                physics.velocity.x = 0.0;
-            }
-        } else {
-            // Si no puede moverse (durante ataques), detener el movimiento horizontal
-            physics.velocity.x = 0.0;
-        }
-
-        // Actualizar la escala para voltear el sprite según la dirección
-        let scale_x = transform.scale.x.abs() * if player.facing_right { 1.0 } else { -1.0 };
-        transform.scale.x = scale_x;
-    }
-}
-
-// Modificar el sistema de salto para usar la tecla de espacio
-fn player_jump(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut query: Query<(&mut Physics, &AnimationController), With<Player>>,
-) {
-    for (mut physics, animation_controller) in &mut query {
-        let current_state = animation_controller.get_current_state();
-        let can_jump = can_move(&current_state); // Usar la misma lógica de can_move
-
-        if keyboard.just_pressed(KeyCode::Space) && physics.on_ground && can_jump {
-            physics.velocity.y = 500.0; // Fuerza de salto
-            physics.on_ground = false;
-        }
-    }
 }
 
 fn update_attack_hitbox(
@@ -330,7 +129,207 @@ fn update_attack_hitbox(
     }
 }
 
-// Configuración inicial del jugador
+fn handle_damage(
+    mut player_query: Query<(
+        &mut Player,
+        &mut AnimationController,
+        &Children,
+        &mut Transform,
+    )>,
+    player_hitboxes: Query<(&CollisionHitbox, &GlobalTransform)>,
+    enemy_attack_hitboxes: Query<(&AttackHitbox, &GlobalTransform, &Parent)>,
+    enemy_query: Query<Entity, With<Enemy>>,
+    time: Res<Time>,
+) {
+    for (mut player, mut animation_controller, children, mut _transform) in &mut player_query {
+        // Si el timer de hurt está activo, el jugador es inmune
+        player.hurt_timer.tick(time.delta());
+        if !player.hurt_timer.finished() {
+            continue;
+        }
+
+        // Encuentra el hitbox del jugador
+        let mut player_hitbox_data = None;
+        for &child in children.iter() {
+            if let Ok((hitbox, transform)) = player_hitboxes.get(child) {
+                if hitbox.active {
+                    player_hitbox_data = Some((hitbox.size, transform.translation().truncate()));
+                    break;
+                }
+            }
+        }
+
+        let (player_size, player_pos) = match player_hitbox_data {
+            Some(data) => data,
+            None => continue,
+        };
+
+        let player_half_size = player_size / 2.0;
+
+        // Verificar colisión con los hitboxes de ataque de los enemigos
+        for (attack_hitbox, attack_transform, parent) in &enemy_attack_hitboxes {
+            if !attack_hitbox.active {
+                continue;
+            }
+
+            // Verificar que el hitbox pertenece a un enemigo
+            if !enemy_query.contains(parent.get()) {
+                continue;
+            }
+
+            let attack_pos = attack_transform.translation().truncate();
+            let attack_half_size = attack_hitbox.size / 2.0;
+
+            // Rect-Rect AABB collision check
+            let collision = (attack_pos.x - attack_half_size.x < player_pos.x + player_half_size.x)
+                && (attack_pos.x + attack_half_size.x > player_pos.x - player_half_size.x)
+                && (attack_pos.y - attack_half_size.y < player_pos.y + player_half_size.y)
+                && (attack_pos.y + attack_half_size.y > player_pos.y - player_half_size.y);
+
+            if collision {
+                let damage = attack_hitbox.damage - player.defense;
+                if damage > 0.0 {
+                    player.health -= damage;
+                    animation_controller.change_state(CharacterState::Hurt);
+                    player.hurt_timer.reset(); // Reiniciar el timer de inmunidad
+                }
+                break; // evita múltiples daños por frame
+            }
+        }
+    }
+}
+
+fn process_player_input(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    _time: Res<Time>,
+    mut query: Query<
+        (
+            &mut AnimationController,
+            &mut Player,
+            &mut Transform,
+            &mut Physics,
+        ),
+        With<Player>,
+    >,
+) {
+    for (mut animation_controller, mut player, mut transform, mut physics) in &mut query {
+        let current_state = animation_controller.get_current_state();
+        let can_move_now = can_move(&current_state);
+
+        // Ataque con Z en lugar de Espacio
+        if keyboard.just_pressed(KeyCode::KeyZ)
+            && current_state != CharacterState::Attacking
+            && current_state != CharacterState::ChargeAttacking
+            && current_state != CharacterState::Jumping
+        {
+            animation_controller.change_state(CharacterState::Attacking);
+        }
+
+        // Ataque cargado con V
+        if keyboard.just_pressed(KeyCode::KeyV)
+            && current_state != CharacterState::ChargeAttacking
+            && current_state != CharacterState::Attacking
+            && current_state != CharacterState::Jumping
+        {
+            animation_controller.change_state(CharacterState::ChargeAttacking);
+        }
+
+        // Solo aplicar movimiento horizontal si puede moverse
+        if can_move_now {
+            // Manejar movimiento a la derecha
+            if keyboard.pressed(KeyCode::ArrowRight) {
+                player.facing_right = true;
+                physics.velocity.x = player.speed;
+            }
+            // Manejar movimiento a la izquierda
+            else if keyboard.pressed(KeyCode::ArrowLeft) {
+                player.facing_right = false;
+                physics.velocity.x = -player.speed;
+            }
+            // Si no se presiona ninguna tecla de movimiento, detener el movimiento horizontal
+            else {
+                physics.velocity.x = 0.0;
+            }
+        } else {
+            // Si no puede moverse (durante ataques), detener el movimiento horizontal
+            physics.velocity.x = 0.0;
+        }
+
+        // Actualizar la escala para voltear el sprite según la dirección
+        let scale_x = transform.scale.x.abs() * if player.facing_right { 1.0 } else { -1.0 };
+        transform.scale.x = scale_x;
+    }
+}
+
+// Modificar el sistema de salto para usar la tecla de espacio
+fn player_jump(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut query: Query<(&mut Physics, &AnimationController), With<Player>>,
+) {
+    for (mut physics, animation_controller) in &mut query {
+        let current_state = animation_controller.get_current_state();
+        let can_jump = can_move(&current_state); // Usar la misma lógica de can_move
+
+        if keyboard.just_pressed(KeyCode::Space) && physics.on_ground && can_jump {
+            physics.velocity.y = 500.0; // Fuerza de salto
+            physics.on_ground = false;
+        }
+    }
+}
+
+fn can_move(state: &CharacterState) -> bool {
+    match state {
+        CharacterState::Attacking => false,
+        CharacterState::ChargeAttacking => false,
+        CharacterState::Hurt => false,
+        _ => true,
+    }
+}
+
+fn update_animations(
+    mut query: Query<(&mut AnimationController, &Physics, &Player)>,
+    time: Res<Time>,
+) {
+    for (mut animation_controller, physics, player) in &mut query {
+        let current_state = animation_controller.get_current_state();
+
+        // Si está en estado Hurt y el timer ha terminado, volver a Idle
+        if current_state == CharacterState::Hurt && player.hurt_timer.finished() {
+            animation_controller.change_state(CharacterState::Idle);
+            continue;
+        }
+
+        // No cambiar las animaciones si está atacando o herido
+        if current_state == CharacterState::Attacking
+            || current_state == CharacterState::ChargeAttacking
+            || current_state == CharacterState::Hurt
+        {
+            continue;
+        }
+
+        // Si está en el aire y la velocidad vertical es negativa, usar animación de caída
+        if !physics.on_ground && physics.velocity.y < 0.0 {
+            animation_controller.change_state(CharacterState::Falling);
+        }
+        // Si está en el aire y la velocidad vertical es positiva o cero, usar animación de salto
+        else if !physics.on_ground {
+            animation_controller.change_state(CharacterState::Jumping);
+        }
+        // Si está en el suelo y la velocidad horizontal es cero, usar idle
+        else if physics.velocity.x.abs() < 0.1 {
+            if current_state != CharacterState::Idle {
+                animation_controller.change_state(CharacterState::Idle);
+            }
+        }
+        // Si está en el suelo y se está moviendo, usar animación de correr
+        else if physics.on_ground {
+            if current_state != CharacterState::Running {
+                animation_controller.change_state(CharacterState::Running);
+            }
+        }
+    }
+}
+
 fn setup_player(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
