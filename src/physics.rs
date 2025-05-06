@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+use crate::game::GameState;
+
 // Componente para física básica
 #[derive(Component)]
 pub struct Physics {
@@ -37,8 +39,13 @@ pub struct GravityPlugin;
 impl Plugin for GravityPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<GravitySettings>()
-            .add_systems(Update, apply_gravity)
-            .add_systems(Update, apply_physics.after(apply_gravity));
+            .add_systems(Update, apply_gravity.run_if(in_state(GameState::Playing)))
+            .add_systems(
+                Update,
+                apply_physics
+                    .after(apply_gravity)
+                    .run_if(in_state(GameState::Playing)),
+            );
     }
 }
 

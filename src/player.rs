@@ -2,8 +2,10 @@ use crate::animations::{
     AnimationController, AnimationData, CharacterAnimations, CharacterState, CurrentAnimation,
 };
 use crate::enemy::{AttackHitbox, CollisionHitbox, Enemy};
+use crate::game::GameState;
 use crate::physics::Physics;
 use crate::resolution;
+use crate::utils;
 
 use bevy::prelude::*;
 use bevy::sprite::Anchor;
@@ -13,12 +15,17 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_player)
-            .add_systems(Update, process_player_input)
-            .add_systems(Update, player_jump.after(process_player_input))
-            .add_systems(Update, update_animations)
-            .add_systems(Update, update_attack_hitbox)
-            .add_systems(Update, handle_damage);
+        app.add_systems(Startup, setup_player).add_systems(
+            Update,
+            ((
+                process_player_input,
+                player_jump.after(process_player_input),
+                update_animations,
+                update_attack_hitbox,
+                handle_damage,
+            )
+                .run_if(in_state(GameState::Playing)),),
+        );
     }
 }
 
@@ -164,8 +171,6 @@ fn handle_damage(
             None => continue,
         };
 
-        let player_half_size = player_size / 2.0;
-
         // Verificar colisión con los hitboxes de ataque de los enemigos
         for (attack_hitbox, attack_transform, parent) in &enemy_attack_hitboxes {
             if !attack_hitbox.active {
@@ -178,15 +183,10 @@ fn handle_damage(
             }
 
             let attack_pos = attack_transform.translation().truncate();
-            let attack_half_size = attack_hitbox.size / 2.0;
 
-            // Rect-Rect AABB collision check
-            let collision = (attack_pos.x - attack_half_size.x < player_pos.x + player_half_size.x)
-                && (attack_pos.x + attack_half_size.x > player_pos.x - player_half_size.x)
-                && (attack_pos.y - attack_half_size.y < player_pos.y + player_half_size.y)
-                && (attack_pos.y + attack_half_size.y > player_pos.y - player_half_size.y);
-
-            if collision {
+            // Usar la función de utilidad para verificar la colisión
+            if utils::check_rect_collision(player_pos, player_size, attack_pos, attack_hitbox.size)
+            {
                 let damage = attack_hitbox.damage - player.defense;
                 if damage > 0.0 {
                     player.health -= damage;

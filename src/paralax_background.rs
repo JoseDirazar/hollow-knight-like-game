@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+use crate::game::GameState;
+
 // Plugin for the parallax background system
 pub struct ParallaxPlugin;
 
@@ -7,24 +9,21 @@ impl Plugin for ParallaxPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ParallaxSettings>()
             .add_systems(Startup, setup_parallax_background)
-            .configure_sets(
-                Update,
-                (
-                    ParallaxSystems::CameraMovement,
-                    ParallaxSystems::BackgroundUpdate.after(ParallaxSystems::CameraMovement),
-                ),
-            )
-            .add_systems(
-                Update,
-                camera_follow_player.in_set(ParallaxSystems::CameraMovement),
-            )
+            // .configure_sets(
+            //     Update,
+            //     (
+            //         ParallaxSystems::CameraMovement,
+            //         ParallaxSystems::BackgroundUpdate.after(ParallaxSystems::CameraMovement),
+            //     ),
+            // )
             .add_systems(
                 Update,
                 (
-                    update_parallax_background_recycled,
-                    update_static_background,
+                    camera_follow_player.in_set(ParallaxSystems::CameraMovement),
+                    update_parallax_background_recycled.in_set(ParallaxSystems::BackgroundUpdate),
+                    update_static_background.in_set(ParallaxSystems::BackgroundUpdate),
                 )
-                    .in_set(ParallaxSystems::BackgroundUpdate),
+                    .run_if(in_state(GameState::Playing)),
             );
     }
 }

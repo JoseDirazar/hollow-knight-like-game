@@ -1,10 +1,12 @@
 use crate::animations::{
     AnimationController, AnimationData, CharacterAnimations, CharacterState, CurrentAnimation,
 };
+use crate::game::GameState;
 use crate::ground::ground_collision;
 use crate::physics::Physics;
 use crate::player::Player;
 use crate::resolution;
+use crate::utils;
 use bevy::prelude::*;
 use bevy::sprite::Anchor;
 
@@ -79,7 +81,8 @@ impl Plugin for EnemyPlugin {
                     update_enemy_states,
                     update_attack_hitbox,
                 )
-                    .after(ground_collision),
+                    .after(ground_collision)
+                    .run_if(in_state(GameState::Playing)),
             );
     }
 }
@@ -238,20 +241,19 @@ fn update_enemy_movement(
             continue;
         }
 
-        let distance = player_position.position.x - transform.translation.x;
-        let abs_distance = distance.abs();
+        let enemy_pos = transform.translation.truncate();
+        let player_pos = player_position.position.truncate();
+        let distance = utils::distance_between_points(enemy_pos, player_pos);
         let current_state = animation_controller.get_current_state();
 
         // Si el jugador está dentro del rango de detección
-        if abs_distance < enemy.detection_range {
+        if distance < enemy.detection_range {
             // Determinar la dirección a la que debe mirar el enemigo
             let old_facing = enemy.facing_right;
-
             enemy.facing_right = player_position.position.x > transform.translation.x;
 
             // Solo actualizar la escala si cambió la dirección
             if old_facing != enemy.facing_right {
-                // Mantener el valor absoluto de la escala actual y solo cambiar el signo
                 let scale_magnitude = transform.scale.x.abs();
                 transform.scale.x = if enemy.facing_right {
                     -scale_magnitude
@@ -261,7 +263,7 @@ fn update_enemy_movement(
             }
 
             // Si está dentro del rango de ataque
-            if abs_distance < enemy.attack_range {
+            if distance < enemy.attack_range {
                 // Detener el movimiento y atacar
                 physics.velocity.x = 0.0;
                 if can_enemy_move(&current_state) {
@@ -269,11 +271,8 @@ fn update_enemy_movement(
                 }
             } else if can_enemy_move(&current_state) {
                 // Moverse hacia el jugador solo si puede moverse
-                physics.velocity.x = if distance > 0.0 {
-                    enemy.speed
-                } else {
-                    -enemy.speed
-                };
+                let direction = utils::direction_vector(enemy_pos, player_pos);
+                physics.velocity.x = direction.x * enemy.speed;
                 animation_controller.change_state(CharacterState::Running);
             } else {
                 // Si no puede moverse, detener el movimiento horizontal
@@ -334,7 +333,7 @@ fn handle_damage(
         &mut AnimationController,
         &Children,
         &mut Transform,
-        &mut Physics, // <-- Añadido para aplicar impulso
+        &mut Physics,
     )>,
     enemy_hitboxes: Query<(&CollisionHitbox, &GlobalTransform)>,
     attack_hitboxes: Query<(&AttackHitbox, &GlobalTransform, &Parent)>,
@@ -362,8 +361,6 @@ fn handle_damage(
             None => continue,
         };
 
-        let enemy_half_size = enemy_size / 2.0;
-
         // Obtener la entidad del jugador
         if let Ok(player_entity) = player_query.get_single() {
             for (attack_hitbox, attack_transform, parent) in &attack_hitboxes {
@@ -372,24 +369,23 @@ fn handle_damage(
                 }
 
                 let attack_pos = attack_transform.translation().truncate();
-                let attack_half_size = attack_hitbox.size / 2.0;
 
-                let collision = (attack_pos.x - attack_half_size.x
-                    < enemy_pos.x + enemy_half_size.x)
-                    && (attack_pos.x + attack_half_size.x > enemy_pos.x - enemy_half_size.x)
-                    && (attack_pos.y - attack_half_size.y < enemy_pos.y + enemy_half_size.y)
-                    && (attack_pos.y + attack_half_size.y > enemy_pos.y - enemy_half_size.y);
-
-                if collision {
+                // Usar la función de utilidad para verificar la colisión
+                if utils::check_rect_collision(
+                    enemy_pos,
+                    enemy_size,
+                    attack_pos,
+                    attack_hitbox.size,
+                ) {
                     let damage = attack_hitbox.damage - enemy.defense;
                     if damage > 0.0 {
                         enemy.health -= damage;
                         animation_controller.change_state(CharacterState::Hurt);
 
-                        // 🟡 Aplicar impulso físico: hacia atrás y hacia arriba
-                        let direction = (enemy_pos - attack_pos).normalize_or_zero(); // dirección del empuje
+                        // Aplicar impulso físico: hacia atrás y hacia arriba
+                        let direction = utils::direction_vector(attack_pos, enemy_pos);
                         physics.velocity += Vec2::new(direction.x * 2150.0, 120.0);
-                        physics.on_ground = false; // ya no está en el suelo
+                        physics.on_ground = false;
                     }
                     break; // solo un golpe por frame
                 }

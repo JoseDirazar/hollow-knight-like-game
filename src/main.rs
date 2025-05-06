@@ -3,12 +3,15 @@ use bevy::prelude::*;
 pub mod animations;
 pub mod enemy;
 pub mod game;
+pub mod gamestate;
 pub mod ground;
+pub mod menu;
 pub mod paralax_background;
+pub mod pause;
 pub mod physics;
 pub mod player;
 pub mod resolution;
-
+pub mod utils;
 fn main() {
     App::new()
         .add_plugins((

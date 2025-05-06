@@ -1,3 +1,4 @@
+use crate::game::GameState;
 use crate::physics::Physics;
 use crate::resolution::Resolution;
 use bevy::prelude::*;
@@ -14,9 +15,13 @@ pub struct GroundPlugin;
 
 impl Plugin for GroundPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_ground)
-            .add_systems(Update, update_ground_position)
-            .add_systems(Update, ground_collision);
+        app.add_systems(Startup, setup_ground).add_systems(
+            Update,
+            (
+                update_ground_position,
+                ground_collision.run_if(in_state(GameState::Playing)),
+            ),
+        );
     }
 }
 
