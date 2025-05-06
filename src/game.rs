@@ -5,6 +5,7 @@ use crate::enemy;
 use crate::ground;
 use crate::menu;
 use crate::paralax_background;
+use crate::pause;
 use crate::physics;
 use crate::player;
 use crate::resolution;
@@ -27,6 +28,7 @@ impl Plugin for GamePlugin {
                 menu::MenuPlugin,
                 resolution::ResolutionPlugin,
                 paralax_background::ParallaxPlugin,
+                pause::PausePlugin,
             ))
             .add_plugins((
                 physics::GravityPlugin,

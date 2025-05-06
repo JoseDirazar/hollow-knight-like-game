@@ -3,7 +3,6 @@ use bevy::prelude::*;
 pub mod animations;
 pub mod enemy;
 pub mod game;
-pub mod gamestate;
 pub mod ground;
 pub mod menu;
 pub mod paralax_background;
