@@ -7,10 +7,10 @@ pub enum CharacterState {
     Attacking,
     ChargeAttacking,
     Running,
-    Jumping, // Nuevo estado para saltar
-    Falling, // Opcional: estado para caer
-    Hurt,    // Estado para cuando recibe daño
+    Jumping,
+    Hurt,
     Dead,
+    Falling,
 }
 #[derive(Component)]
 pub struct CharacterDimensions {
@@ -18,12 +18,9 @@ pub struct CharacterDimensions {
     pub feet_offset: f32,
 }
 
-// Componente para administrar las animaciones
 #[derive(Component)]
 pub struct AnimationController {
-    // Estado actual del personaje
     current_state: CharacterState,
-    // Estado a cambiar en el próximo frame (útil para transiciones)
     next_state: Option<CharacterState>,
 }
 
@@ -55,13 +52,11 @@ impl AnimationController {
     }
 }
 
-// Componente que contiene todas las animaciones disponibles
 #[derive(Component)]
 pub struct CharacterAnimations {
     pub animations: Vec<AnimationData>,
 }
 
-// Datos de una animación específica
 #[derive(Clone)]
 pub struct AnimationData {
     pub state: CharacterState,
@@ -73,17 +68,15 @@ pub struct AnimationData {
     pub ping_pong: bool,
 }
 
-// Componente para la animación actual
 #[derive(Component)]
 pub struct CurrentAnimation {
     pub current_frame: usize,
     pub timer: Timer,
     pub total_frames: usize,
     pub looping: bool,
-    pub reverse_direction: bool, // New field to track direction
+    pub reverse_direction: bool,
 }
 
-// Plugin para gestionar animaciones
 pub struct AnimationPlugin;
 
 impl Plugin for AnimationPlugin {
@@ -95,7 +88,6 @@ impl Plugin for AnimationPlugin {
     }
 }
 
-// Sistema que actualiza el estado de animación
 pub fn update_animation_state(
     mut _commands: Commands,
     mut query: Query<(
@@ -107,7 +99,6 @@ pub fn update_animation_state(
     )>,
 ) {
     for (_entity, mut controller, animations, mut current_animation, mut sprite) in &mut query {
-        // Si hay un cambio de estado pendiente
         if controller.apply_next_state() {
             let current_state = controller.get_current_state();
 
@@ -137,7 +128,6 @@ pub fn update_animation_state(
     }
 }
 
-// Sistema que anima el sprite según el estado actual
 pub fn animate_current_state(
     time: Res<Time>,
     mut query: Query<(

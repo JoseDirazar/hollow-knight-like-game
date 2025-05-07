@@ -2,23 +2,62 @@ use crate::animations::{
     AnimationController, AnimationData, CharacterAnimations, CharacterState, CurrentAnimation,
 };
 use crate::enemy::{AttackHitbox, CollisionHitbox, Enemy};
+use crate::game::GameState;
 use crate::physics::Physics;
 use crate::resolution;
+use crate::utils;
 
+use bevy::prelude::*;
 use bevy::sprite::Anchor;
-use bevy::{color::palettes::css::WHITE, prelude::*};
+
+// Constants
+const PLAYER_INITIAL_HEALTH: f32 = 100.0;
+const PLAYER_MAX_HEALTH: f32 = 100.0;
+const PLAYER_ATTACK: f32 = 10.0;
+const PLAYER_DEFENSE: f32 = 5.0;
+const PLAYER_SPEED: f32 = 250.0;
+const PLAYER_JUMP_FORCE: f32 = 500.0;
+const PLAYER_HURT_IMMUNITY_TIME: f32 = 0.4;
+const PLAYER_COLLISION_SIZE: Vec2 = Vec2::new(45.0, 45.0);
+const PLAYER_ATTACK_HITBOX_SIZE: Vec2 = Vec2::new(40.0, 30.0);
+const PLAYER_CHARGE_ATTACK_HITBOX_SIZE: Vec2 = Vec2::new(84.0, 30.0);
+const PLAYER_ATTACK_HITBOX_DURATION: f32 = 0.1;
+const PLAYER_ATTACK_HITBOX_OFFSET: f32 = 0.5;
+const PLAYER_FEET_OFFSET: f32 = 10.0;
+
+// Animation Constants
+const PLAYER_IDLE_FRAMES: usize = 11;
+const PLAYER_ATTACK_FRAMES: usize = 7;
+const PLAYER_CHARGE_ATTACK_FRAMES: usize = 7;
+const PLAYER_RUN_FRAMES: usize = 8;
+const PLAYER_JUMP_FRAMES: usize = 3;
+const PLAYER_HURT_FRAMES: usize = 4;
+const PLAYER_FALL_FRAMES: usize = 3;
+
+const PLAYER_IDLE_FPS: f32 = 10.0;
+const PLAYER_ATTACK_FPS: f32 = 20.0;
+const PLAYER_CHARGE_ATTACK_FPS: f32 = 12.0;
+const PLAYER_RUN_FPS: f32 = 15.0;
+const PLAYER_JUMP_FPS: f32 = 18.0;
+const PLAYER_HURT_FPS: f32 = 10.0;
+const PLAYER_FALL_FPS: f32 = 10.0;
 
 // Plugin principal del jugador
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_player)
-            .add_systems(Update, process_player_input)
-            .add_systems(Update, player_jump.after(process_player_input))
-            .add_systems(Update, update_animations)
-            .add_systems(Update, update_attack_hitbox)
-            .add_systems(Update, handle_damage);
+        app.add_systems(Startup, setup_player).add_systems(
+            Update,
+            ((
+                process_player_input,
+                player_jump.after(process_player_input),
+                update_animations,
+                update_attack_hitbox,
+                handle_damage,
+            )
+                .run_if(in_state(GameState::Playing)),),
+        );
     }
 }
 
@@ -35,6 +74,98 @@ pub struct Player {
     pub hurt_timer: Timer,
 }
 
+fn update_attack_hitbox(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(
+        Entity,
+        &AnimationController,
+        &Transform,
+        &Player,
+        &CurrentAnimation,
+    )>,
+    mut hitbox_query: Query<(Entity, &Parent, &mut AttackHitbox)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    _resolution: Res<resolution::Resolution>,
+) {
+    // Primero actualizamos los timers y removemos hitboxes expiradas
+    for (hitbox_entity, _parent, mut hitbox) in &mut hitbox_query {
+        hitbox.timer.tick(time.delta());
+
+        if hitbox.timer.finished() {
+            hitbox.active = false;
+            commands.entity(hitbox_entity).despawn_recursive();
+        }
+    }
+
+    for (entity, animation_controller, _transform, player, current_animation) in &mut query {
+        let current_state = animation_controller.get_current_state();
+        let is_attacking = matches!(
+            current_state,
+            CharacterState::Attacking | CharacterState::ChargeAttacking
+        );
+
+        // Verificar si ya existe un hitbox activo
+        let has_active_hitbox = hitbox_query
+            .iter()
+            .any(|(_, parent, hitbox)| parent.get() == entity && hitbox.active);
+
+        // Eliminar hitboxes antiguas si ya no está atacando
+        if !is_attacking {
+            for (hitbox_entity, parent, _) in hitbox_query.iter() {
+                if parent.get() == entity {
+                    commands.entity(hitbox_entity).despawn_recursive();
+                }
+            }
+            continue;
+        }
+
+        // Solo crear nuevo hitbox si no hay uno activo y estamos en el rango de tiempo deseado
+        if is_attacking && !has_active_hitbox {
+            let should_create_hitbox = match current_state {
+                CharacterState::Attacking => current_animation.current_frame == 3,
+                CharacterState::ChargeAttacking => current_animation.current_frame == 4,
+                _ => false,
+            };
+
+            if should_create_hitbox {
+                let damage = if current_state == CharacterState::Attacking {
+                    player.attack
+                } else {
+                    player.attack * 2.0
+                };
+
+                let hitbox_size = if current_state == CharacterState::Attacking {
+                    PLAYER_ATTACK_HITBOX_SIZE
+                } else {
+                    PLAYER_CHARGE_ATTACK_HITBOX_SIZE
+                };
+                let offset_x = hitbox_size.x * PLAYER_ATTACK_HITBOX_OFFSET;
+
+                commands.entity(entity).with_children(|parent| {
+                    parent.spawn((
+                        AttackHitbox {
+                            damage,
+                            active: true,
+                            size: hitbox_size,
+                            timer: Timer::from_seconds(PLAYER_ATTACK_HITBOX_DURATION, TimerMode::Once),
+                        },
+                        Transform::from_translation(Vec3::new(offset_x, 0., 0.)),
+                        Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
+                        MeshMaterial2d(materials.add(Color::Srgba(Srgba {
+                            red: 0.,
+                            green: 255.,
+                            blue: 0.,
+                            alpha: 0.7,
+                        }))),
+                    ));
+                });
+            }
+        }
+    }
+}
+
 fn handle_damage(
     mut player_query: Query<(
         &mut Player,
@@ -47,7 +178,7 @@ fn handle_damage(
     enemy_query: Query<Entity, With<Enemy>>,
     time: Res<Time>,
 ) {
-    for (mut player, mut animation_controller, children, mut transform) in &mut player_query {
+    for (mut player, mut animation_controller, children, mut _transform) in &mut player_query {
         // Si el timer de hurt está activo, el jugador es inmune
         player.hurt_timer.tick(time.delta());
         if !player.hurt_timer.finished() {
@@ -70,8 +201,6 @@ fn handle_damage(
             None => continue,
         };
 
-        let player_half_size = player_size / 2.0;
-
         // Verificar colisión con los hitboxes de ataque de los enemigos
         for (attack_hitbox, attack_transform, parent) in &enemy_attack_hitboxes {
             if !attack_hitbox.active {
@@ -84,81 +213,17 @@ fn handle_damage(
             }
 
             let attack_pos = attack_transform.translation().truncate();
-            let attack_half_size = attack_hitbox.size / 2.0;
 
-            // Rect-Rect AABB collision check
-            let collision = (attack_pos.x - attack_half_size.x < player_pos.x + player_half_size.x)
-                && (attack_pos.x + attack_half_size.x > player_pos.x - player_half_size.x)
-                && (attack_pos.y - attack_half_size.y < player_pos.y + player_half_size.y)
-                && (attack_pos.y + attack_half_size.y > player_pos.y - player_half_size.y);
-
-            println!("HEALTH:: {}", player.health);
-            if collision {
+            // Usar la función de utilidad para verificar la colisión
+            if utils::check_rect_collision(player_pos, player_size, attack_pos, attack_hitbox.size)
+            {
                 let damage = attack_hitbox.damage - player.defense;
                 if damage > 0.0 {
                     player.health -= damage;
                     animation_controller.change_state(CharacterState::Hurt);
                     player.hurt_timer.reset(); // Reiniciar el timer de inmunidad
-                    println!(
-                        "PLAYER ANIMATION:: {:?}",
-                        animation_controller.get_current_state()
-                    )
                 }
                 break; // evita múltiples daños por frame
-            }
-        }
-    }
-}
-
-fn can_move(state: &CharacterState) -> bool {
-    match state {
-        CharacterState::Attacking => false,
-        CharacterState::ChargeAttacking => false,
-        CharacterState::Hurt => false,
-        _ => true,
-    }
-}
-
-// Sistema separado para actualizar las animaciones según el estado físico
-fn update_animations(
-    mut query: Query<(&mut AnimationController, &Physics, &Player)>,
-    time: Res<Time>,
-) {
-    for (mut animation_controller, physics, player) in &mut query {
-        let current_state = animation_controller.get_current_state();
-
-        // Si está en estado Hurt y el timer ha terminado, volver a Idle
-        if current_state == CharacterState::Hurt && player.hurt_timer.finished() {
-            animation_controller.change_state(CharacterState::Idle);
-            continue;
-        }
-
-        // No cambiar las animaciones si está atacando o herido
-        if current_state == CharacterState::Attacking
-            || current_state == CharacterState::ChargeAttacking
-            || current_state == CharacterState::Hurt
-        {
-            continue;
-        }
-
-        // Si está en el aire y la velocidad vertical es negativa, usar animación de caída
-        if !physics.on_ground && physics.velocity.y < 0.0 {
-            animation_controller.change_state(CharacterState::Falling);
-        }
-        // Si está en el aire y la velocidad vertical es positiva o cero, usar animación de salto
-        else if !physics.on_ground {
-            animation_controller.change_state(CharacterState::Jumping);
-        }
-        // Si está en el suelo y la velocidad horizontal es cero, usar idle
-        else if physics.velocity.x.abs() < 0.1 {
-            if current_state != CharacterState::Idle {
-                animation_controller.change_state(CharacterState::Idle);
-            }
-        }
-        // Si está en el suelo y se está moviendo, usar animación de correr
-        else if physics.on_ground {
-            if current_state != CharacterState::Running {
-                animation_controller.change_state(CharacterState::Running);
             }
         }
     }
@@ -233,126 +298,67 @@ fn player_jump(
 ) {
     for (mut physics, animation_controller) in &mut query {
         let current_state = animation_controller.get_current_state();
-        let can_jump = can_move(&current_state); // Usar la misma lógica de can_move
+        let can_jump = can_move(&current_state);
 
         if keyboard.just_pressed(KeyCode::Space) && physics.on_ground && can_jump {
-            physics.velocity.y = 500.0; // Fuerza de salto
+            physics.velocity.y = PLAYER_JUMP_FORCE;
             physics.on_ground = false;
         }
     }
 }
 
-fn update_attack_hitbox(
-    mut commands: Commands,
-    time: Res<Time>,
-    mut query: Query<(
-        Entity,
-        &AnimationController,
-        &Transform,
-        &Player,
-        &CurrentAnimation,
-    )>,
-    mut hitbox_query: Query<(Entity, &Parent, &mut AttackHitbox)>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    resolution: Res<resolution::Resolution>,
-) {
-    // Primero actualizamos los timers y removemos hitboxes expiradas
-    for (hitbox_entity, parent, mut hitbox) in &mut hitbox_query {
-        hitbox.timer.tick(time.delta());
-        println!(
-            "Hitbox timer: {:.2} remaining",
-            hitbox.timer.remaining_secs()
-        );
-
-        if hitbox.timer.finished() {
-            println!("Hitbox timer finished, despawning hitbox");
-            hitbox.active = false;
-            commands.entity(hitbox_entity).despawn_recursive();
-        }
+fn can_move(state: &CharacterState) -> bool {
+    match state {
+        CharacterState::Attacking => false,
+        CharacterState::ChargeAttacking => false,
+        CharacterState::Hurt => false,
+        _ => true,
     }
+}
 
-    for (entity, animation_controller, transform, player, current_animation) in &mut query {
+fn update_animations(
+    mut query: Query<(&mut AnimationController, &Physics, &Player)>,
+) {
+    for (mut animation_controller, physics, player) in &mut query {
         let current_state = animation_controller.get_current_state();
-        println!("Current player state: {:?}", current_state);
 
-        let is_attacking = matches!(
-            current_state,
-            CharacterState::Attacking | CharacterState::ChargeAttacking
-        );
-
-        // Verificar si ya existe un hitbox activo
-        let has_active_hitbox = hitbox_query
-            .iter()
-            .any(|(_, parent, hitbox)| parent.get() == entity && hitbox.active);
-
-        println!("Has active hitbox: {}", has_active_hitbox);
-
-        // Eliminar hitboxes antiguas si ya no está atacando
-        if !is_attacking {
-            for (hitbox_entity, parent, _) in hitbox_query.iter() {
-                if parent.get() == entity {
-                    println!("Player not attacking, removing hitbox");
-                    commands.entity(hitbox_entity).despawn_recursive();
-                }
-            }
+        // Si está en estado Hurt y el timer ha terminado, volver a Idle
+        if current_state == CharacterState::Hurt && player.hurt_timer.finished() {
+            animation_controller.change_state(CharacterState::Idle);
             continue;
         }
 
-        // Solo crear nuevo hitbox si no hay uno activo y estamos en el rango de tiempo deseado
-        if is_attacking && !has_active_hitbox {
-            let should_create_hitbox = match current_state {
-                CharacterState::Attacking => current_animation.current_frame == 3,
-                CharacterState::ChargeAttacking => {
-                    current_animation.current_frame >= 4 && current_animation.current_frame <= 5
-                }
-                _ => false,
-            };
+        // No cambiar las animaciones si está atacando o herido
+        if current_state == CharacterState::Attacking
+            || current_state == CharacterState::ChargeAttacking
+            || current_state == CharacterState::Hurt
+        {
+            continue;
+        }
 
-            if should_create_hitbox {
-                println!(
-                    "Creating new hitbox at frame: {}",
-                    current_animation.current_frame
-                );
-                let damage = if current_state == CharacterState::Attacking {
-                    player.attack
-                } else {
-                    player.attack * 2.0
-                };
-
-                let hitbox_size = if current_state == CharacterState::Attacking {
-                    Vec2::new(40., 30.0)
-                } else {
-                    Vec2::new(84.0, 30.0)
-                };
-                let offset_x = hitbox_size.x * 0.5;
-
-                // Crear entidad hija para la hitbox
-                commands.entity(entity).with_children(|parent| {
-                    parent.spawn((
-                        AttackHitbox {
-                            damage,
-                            active: true,
-                            size: hitbox_size,
-                            timer: Timer::from_seconds(0.1, TimerMode::Once),
-                        },
-                        Transform::from_translation(Vec3::new(offset_x, 0., 0.)),
-                        // .with_scale(Vec3::splat(resolution.pixel_ratio)),
-                        Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
-                        MeshMaterial2d(materials.add(Color::Srgba(Srgba {
-                            red: 0.,
-                            green: 255.,
-                            blue: 0.,
-                            alpha: 0.1,
-                        }))),
-                    ));
-                });
+        // Si está en el aire y la velocidad vertical es negativa, usar animación de caída
+        if !physics.on_ground && physics.velocity.y < 0.0 {
+            animation_controller.change_state(CharacterState::Falling);
+        }
+        // Si está en el aire y la velocidad vertical es positiva o cero, usar animación de salto
+        else if !physics.on_ground {
+            animation_controller.change_state(CharacterState::Jumping);
+        }
+        // Si está en el suelo y la velocidad horizontal es cero, usar idle
+        else if physics.velocity.x.abs() < 0.1 {
+            if current_state != CharacterState::Idle {
+                animation_controller.change_state(CharacterState::Idle);
+            }
+        }
+        // Si está en el suelo y se está moviendo, usar animación de correr
+        else if physics.on_ground {
+            if current_state != CharacterState::Running {
+                animation_controller.change_state(CharacterState::Running);
             }
         }
     }
 }
 
-// Configuración inicial del jugador
 fn setup_player(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -494,13 +500,13 @@ fn setup_player(
             // Estadísticas del jugador
             Player {
                 name: "Hero".to_string(),
-                health: 100.0,
-                max_health: 100.0,
-                attack: 10.0,
-                defense: 5.0,
-                speed: 250.0,
+                health: PLAYER_INITIAL_HEALTH,
+                max_health: PLAYER_MAX_HEALTH,
+                attack: PLAYER_ATTACK,
+                defense: PLAYER_DEFENSE,
+                speed: PLAYER_SPEED,
                 facing_right: true, // Inicialmente mirando a la derecha
-                hurt_timer: Timer::from_seconds(0.4, TimerMode::Once), // Timer para inmunidad
+                hurt_timer: Timer::from_seconds(PLAYER_HURT_IMMUNITY_TIME, TimerMode::Once), // Timer para inmunidad
             },
             Physics {
                 velocity: Vec2::ZERO,
@@ -518,16 +524,17 @@ fn setup_player(
             parent.spawn((
                 CollisionHitbox {
                     active: true,
-                    size: Vec2::new(64.0, 64.0),
+                    size: PLAYER_COLLISION_SIZE * resolution.pixel_ratio,
                 },
-                Mesh2d(meshes.add(Rectangle::from_size(Vec2::new(32., 32.)))),
+                Mesh2d(meshes.add(Rectangle::from_size(PLAYER_COLLISION_SIZE))),
                 MeshMaterial2d(materials.add(Color::Srgba(Srgba {
                     red: 255.,
                     green: 0.,
                     blue: 0.,
                     alpha: 0.1,
                 }))),
-                Transform::from_scale(Vec3::splat(resolution.pixel_ratio)),
+                Transform::from_scale(Vec3::splat(resolution.pixel_ratio))
+                    .with_translation(Vec3::new(0.0, -PLAYER_FEET_OFFSET * 0.5, 0.0)),
                 Anchor::Center,
             ));
         });

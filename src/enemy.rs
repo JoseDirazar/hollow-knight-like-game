@@ -1,13 +1,48 @@
 use crate::animations::{
     AnimationController, AnimationData, CharacterAnimations, CharacterState, CurrentAnimation,
 };
+use crate::game::GameState;
 use crate::ground::ground_collision;
 use crate::physics::Physics;
 use crate::player::Player;
 use crate::resolution;
-use bevy::color::palettes::css::WHITE;
+use crate::utils;
 use bevy::prelude::*;
 use bevy::sprite::Anchor;
+
+// Constants
+const ENEMY_INITIAL_HEALTH: f32 = 200.0;
+const ENEMY_MAX_HEALTH: f32 = 50.0;
+const ENEMY_ATTACK: f32 = 10.0;
+const ENEMY_DEFENSE: f32 = 5.0;
+const ENEMY_SPEED: f32 = 150.0;
+const ENEMY_ATTACK_RANGE: f32 = 146.0;
+const ENEMY_DETECTION_RANGE: f32 = 400.0;
+const ENEMY_COLLISION_SIZE: Vec2 = Vec2::new(32.0, 32.0);
+const ENEMY_ATTACK_HITBOX_SIZE: Vec2 = Vec2::new(73.0, 30.0);
+const ENEMY_CHARGE_ATTACK_HITBOX_SIZE: Vec2 = Vec2::new(78.0, 30.0);
+const ENEMY_ATTACK_HITBOX_DURATION: f32 = 0.1;
+const ENEMY_ATTACK_HITBOX_OFFSET: f32 = 0.6;
+const ENEMY_DEATH_TIMER: f32 = 3.0;
+const ENEMY_HURT_TIMER: f32 = 0.3;
+const ENEMY_DESIRED_COUNT: usize = 2;
+const ENEMY_SPAWN_OFFSET_X: f32 = 20.0;
+const ENEMY_SPAWN_OFFSET_Y: f32 = 90.0;
+const ENEMY_SCALE_FACTOR: f32 = 2.0;
+const ENEMY_FEET_OFFSET: f32 = 0.5;
+
+// Animation Constants
+const ENEMY_IDLE_FRAMES: usize = 8;
+const ENEMY_ATTACK_FRAMES: usize = 23;
+const ENEMY_MOVE_FRAMES: usize = 10;
+const ENEMY_HURT_FRAMES: usize = 3;
+const ENEMY_DIE_FRAMES: usize = 24;
+
+const ENEMY_IDLE_FPS: f32 = 14.0;
+const ENEMY_ATTACK_FPS: f32 = 14.0;
+const ENEMY_MOVE_FPS: f32 = 14.0;
+const ENEMY_HURT_FPS: f32 = 10.0;
+const ENEMY_DIE_FPS: f32 = 14.0;
 
 // Componente para el enemigo
 #[derive(Component)]
@@ -40,13 +75,11 @@ pub struct CollisionHitbox {
     pub size: Vec2,
 }
 
-// Recurso para almacenar la posición del jugador
 #[derive(Resource, Default)]
 struct PlayerPosition {
     position: Vec3,
 }
 
-// Agregar este recurso para rastrear enemigos activos
 #[derive(Resource)]
 pub struct EnemyCounter {
     pub current_count: usize,
@@ -57,12 +90,11 @@ impl Default for EnemyCounter {
     fn default() -> Self {
         Self {
             current_count: 0,
-            desired_count: 2, // Queremos mantener 2 enemigos activos
+            desired_count: ENEMY_DESIRED_COUNT,
         }
     }
 }
 
-// Plugin principal del enemigo
 pub struct EnemyPlugin;
 
 impl Plugin for EnemyPlugin {
@@ -83,7 +115,8 @@ impl Plugin for EnemyPlugin {
                     update_enemy_states,
                     update_attack_hitbox,
                 )
-                    .after(ground_collision),
+                    .after(ground_collision)
+                    .run_if(in_state(GameState::Playing)),
             );
     }
 }
@@ -105,13 +138,8 @@ fn update_attack_hitbox(
     // Primero actualizamos los timers y removemos hitboxes expiradas
     for (hitbox_entity, _parent, mut hitbox) in &mut hitbox_query {
         hitbox.timer.tick(time.delta());
-        println!(
-            "Hitbox timer: {:.2} remaining",
-            hitbox.timer.remaining_secs()
-        );
 
         if hitbox.timer.finished() {
-            println!("Hitbox timer finished, despawning hitbox");
             hitbox.active = false;
             commands.entity(hitbox_entity).despawn_recursive();
         }
@@ -119,7 +147,6 @@ fn update_attack_hitbox(
 
     for (entity, animation_controller, _transform, player, current_animation) in &mut query {
         let current_state = animation_controller.get_current_state();
-        println!("Current player state: {:?}", current_state);
 
         let is_attacking = matches!(
             current_state,
@@ -131,13 +158,10 @@ fn update_attack_hitbox(
             .iter()
             .any(|(_, parent, hitbox)| parent.get() == entity && hitbox.active);
 
-        println!("Has active hitbox: {}", has_active_hitbox);
-
         // Eliminar hitboxes antiguas si ya no está atacando
         if !is_attacking {
             for (hitbox_entity, parent, _) in hitbox_query.iter() {
                 if parent.get() == entity {
-                    println!("Player not attacking, removing hitbox");
                     commands.entity(hitbox_entity).despawn_recursive();
                 }
             }
@@ -147,16 +171,12 @@ fn update_attack_hitbox(
         // Solo crear nuevo hitbox si no hay uno activo y es el inicio del ataque
         if is_attacking && !has_active_hitbox {
             let should_create_hitbox = match current_animation.current_frame {
-                4 => true,       // Primer ataque
-                13..=18 => true, // Segundo ataque (cargado)
+                4 => true,  // Primer ataque
+                13 => true, // Segundo ataque (cargado)
                 _ => false,
             };
 
             if should_create_hitbox {
-                println!(
-                    "Creating new hitbox for enemy attack at frame {}",
-                    current_animation.current_frame
-                );
                 let damage = if current_state == CharacterState::Attacking {
                     player.attack
                 } else {
@@ -164,11 +184,11 @@ fn update_attack_hitbox(
                 };
 
                 let hitbox_size = if current_state == CharacterState::Attacking {
-                    Vec2::new(73., 30.0)
+                    ENEMY_ATTACK_HITBOX_SIZE
                 } else {
-                    Vec2::new(78.0, 30.0)
+                    ENEMY_CHARGE_ATTACK_HITBOX_SIZE
                 };
-                let offset_x = hitbox_size.x * 0.6;
+                let offset_x = hitbox_size.x * ENEMY_ATTACK_HITBOX_OFFSET;
 
                 // Crear entidad hija para la hitbox
                 commands.entity(entity).with_children(|parent| {
@@ -177,7 +197,7 @@ fn update_attack_hitbox(
                             damage,
                             active: true,
                             size: hitbox_size,
-                            timer: Timer::from_seconds(0.1, TimerMode::Once),
+                            timer: Timer::from_seconds(ENEMY_ATTACK_HITBOX_DURATION, TimerMode::Once),
                         },
                         Transform::from_translation(Vec3::new(-offset_x, 0., 0.)),
                         Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
@@ -213,7 +233,6 @@ fn update_enemy_states(
     }
 }
 
-// Sistema para actualizar la posición del jugador
 fn update_player_position(
     player: Query<&Transform, With<Player>>,
     mut player_position: ResMut<PlayerPosition>,
@@ -224,7 +243,6 @@ fn update_player_position(
     }
 }
 
-// Función para saber si el enemigo puede moverse o cambiar de estado
 fn can_enemy_move(state: &CharacterState) -> bool {
     match state {
         CharacterState::Attacking | CharacterState::ChargeAttacking | CharacterState::Hurt => false,
@@ -232,7 +250,6 @@ fn can_enemy_move(state: &CharacterState) -> bool {
     }
 }
 
-// Sistema para actualizar el movimiento del enemigo
 fn update_enemy_movement(
     mut query: Query<(
         Entity,
@@ -258,26 +275,19 @@ fn update_enemy_movement(
             continue;
         }
 
-        let distance = player_position.position.x - transform.translation.x;
-        let abs_distance = distance.abs();
+        let enemy_pos = transform.translation.truncate();
+        let player_pos = player_position.position.truncate();
+        let distance = utils::distance_between_points(enemy_pos, player_pos);
         let current_state = animation_controller.get_current_state();
 
         // Si el jugador está dentro del rango de detección
-        if abs_distance < enemy.detection_range {
+        if distance < enemy.detection_range {
             // Determinar la dirección a la que debe mirar el enemigo
             let old_facing = enemy.facing_right;
-            println!(
-                "distance: {}, player-position: {:?}, enemy-position: {}, can-enemy-move: {:?}",
-                distance,
-                player_position.position.x,
-                transform.translation.x,
-                can_enemy_move(&current_state),
-            );
             enemy.facing_right = player_position.position.x > transform.translation.x;
 
             // Solo actualizar la escala si cambió la dirección
             if old_facing != enemy.facing_right {
-                // Mantener el valor absoluto de la escala actual y solo cambiar el signo
                 let scale_magnitude = transform.scale.x.abs();
                 transform.scale.x = if enemy.facing_right {
                     -scale_magnitude
@@ -287,7 +297,7 @@ fn update_enemy_movement(
             }
 
             // Si está dentro del rango de ataque
-            if abs_distance < enemy.attack_range {
+            if distance < enemy.attack_range {
                 // Detener el movimiento y atacar
                 physics.velocity.x = 0.0;
                 if can_enemy_move(&current_state) {
@@ -295,11 +305,8 @@ fn update_enemy_movement(
                 }
             } else if can_enemy_move(&current_state) {
                 // Moverse hacia el jugador solo si puede moverse
-                physics.velocity.x = if distance > 0.0 {
-                    enemy.speed
-                } else {
-                    -enemy.speed
-                };
+                let direction = utils::direction_vector(enemy_pos, player_pos);
+                physics.velocity.x = direction.x * enemy.speed;
                 animation_controller.change_state(CharacterState::Running);
             } else {
                 // Si no puede moverse, detener el movimiento horizontal
@@ -314,8 +321,6 @@ fn update_enemy_movement(
         }
     }
 }
-
-// Sistema para actualizar las animaciones del enemigo
 
 fn update_enemy_animations(
     mut enemies: Query<(&mut AnimationController, &Physics, &Enemy, &mut Transform)>,
@@ -362,12 +367,14 @@ fn handle_damage(
         &mut AnimationController,
         &Children,
         &mut Transform,
+        &mut Physics,
     )>,
     enemy_hitboxes: Query<(&CollisionHitbox, &GlobalTransform)>,
     attack_hitboxes: Query<(&AttackHitbox, &GlobalTransform, &Parent)>,
     player_query: Query<Entity, With<Player>>,
 ) {
-    for (mut enemy, mut animation_controller, children, mut _transform) in &mut enemies {
+    for (mut enemy, mut animation_controller, children, mut _transform, mut physics) in &mut enemies
+    {
         if enemy.is_dead {
             continue;
         }
@@ -388,47 +395,46 @@ fn handle_damage(
             None => continue,
         };
 
-        let enemy_half_size = enemy_size / 2.0;
-
         // Obtener la entidad del jugador
         if let Ok(player_entity) = player_query.get_single() {
-            // Verificar colisión con los hitboxes de ataque del jugador
             for (attack_hitbox, attack_transform, parent) in &attack_hitboxes {
                 if !attack_hitbox.active || parent.get() != player_entity {
                     continue;
                 }
 
                 let attack_pos = attack_transform.translation().truncate();
-                let attack_half_size = attack_hitbox.size / 2.0;
 
-                // Rect-Rect AABB collision check
-                let collision = (attack_pos.x - attack_half_size.x
-                    < enemy_pos.x + enemy_half_size.x)
-                    && (attack_pos.x + attack_half_size.x > enemy_pos.x - enemy_half_size.x)
-                    && (attack_pos.y - attack_half_size.y < enemy_pos.y + enemy_half_size.y)
-                    && (attack_pos.y + attack_half_size.y > enemy_pos.y - enemy_half_size.y);
-
-                if collision {
+                // Usar la función de utilidad para verificar la colisión
+                if utils::check_rect_collision(
+                    enemy_pos,
+                    enemy_size,
+                    attack_pos,
+                    attack_hitbox.size,
+                ) {
                     let damage = attack_hitbox.damage - enemy.defense;
                     if damage > 0.0 {
                         enemy.health -= damage;
                         animation_controller.change_state(CharacterState::Hurt);
+
+                        // Aplicar impulso físico: hacia atrás y hacia arriba
+                        let direction = utils::direction_vector(attack_pos, enemy_pos);
+                        physics.velocity += Vec2::new(direction.x * 2150.0, 120.0);
+                        physics.on_ground = false;
                     }
-                    break; // evita múltiples daños por frame
+                    break; // solo un golpe por frame
                 }
             }
         }
     }
 }
 
-// Sistema para verificar la muerte
 fn check_death(mut query: Query<(&mut Enemy, &mut AnimationController, &mut Transform)>) {
     for (mut enemy, mut animation_controller, mut transform) in &mut query {
         if enemy.health <= 0.0 && !enemy.is_dead {
             enemy.is_dead = true;
             animation_controller.change_state(CharacterState::Dead);
-            enemy.death_timer = Timer::from_seconds(3.0, TimerMode::Once);
-            transform.translation.x -= 20.0;
+            enemy.death_timer = Timer::from_seconds(ENEMY_DEATH_TIMER, TimerMode::Once);
+            transform.translation.x -= ENEMY_SPAWN_OFFSET_X;
         }
     }
 }
@@ -479,7 +485,7 @@ fn cleanup_dead_enemies(
         }
     }
 }
-// Función helper para crear un enemigo
+
 fn spawn_enemy(
     commands: &mut Commands,
     asset_server: &AssetServer,
@@ -494,11 +500,10 @@ fn spawn_enemy(
     let window_height = window.height();
     let ground_height = -window_height * 0.3;
 
-    // Generar posición aleatoria en los bordes de la pantalla
     let spawn_side = if rand::random::<bool>() { 1.0 } else { -1.0 };
-    let spawn_x = spawn_side * (window_width * 0.4); // 40% desde el centro hacia los bordes
+    let spawn_x = spawn_side * (window_width * 0.4);
 
-    let enemy_y = ground_height + 90.0 * resolution.pixel_ratio;
+    let enemy_y = ground_height + ENEMY_SPAWN_OFFSET_Y * resolution.pixel_ratio;
 
     let idle_texture = asset_server.load("enemy/skeleton/skeletonIdle-Sheet64x64.png");
     let attack_texture = asset_server.load("enemy/skeleton/skeletonAttack-cropped.png");
@@ -527,8 +532,8 @@ fn spawn_enemy(
                 state: CharacterState::Idle,
                 texture: idle_texture.clone(),
                 atlas_layout: idle_atlas_layout.clone(),
-                frames: 8,
-                fps: 14.0,
+                frames: ENEMY_IDLE_FRAMES,
+                fps: ENEMY_IDLE_FPS,
                 looping: true,
                 ping_pong: false,
             },
@@ -536,8 +541,8 @@ fn spawn_enemy(
                 state: CharacterState::Attacking,
                 texture: attack_texture.clone(),
                 atlas_layout: attack_atlas_layout.clone(),
-                frames: 23,
-                fps: 14.0,
+                frames: ENEMY_ATTACK_FRAMES,
+                fps: ENEMY_ATTACK_FPS,
                 looping: false,
                 ping_pong: false,
             },
@@ -545,8 +550,8 @@ fn spawn_enemy(
                 state: CharacterState::Running,
                 texture: move_texture.clone(),
                 atlas_layout: move_atlas_layout.clone(),
-                frames: 10,
-                fps: 14.0,
+                frames: ENEMY_MOVE_FRAMES,
+                fps: ENEMY_MOVE_FPS,
                 looping: true,
                 ping_pong: false,
             },
@@ -554,8 +559,8 @@ fn spawn_enemy(
                 state: CharacterState::Hurt,
                 texture: hurt_texture.clone(),
                 atlas_layout: hurt_atlas_layout.clone(),
-                frames: 3,
-                fps: 10.0,
+                frames: ENEMY_HURT_FRAMES,
+                fps: ENEMY_HURT_FPS,
                 looping: false,
                 ping_pong: false,
             },
@@ -563,8 +568,8 @@ fn spawn_enemy(
                 state: CharacterState::Dead,
                 texture: die_texture.clone(),
                 atlas_layout: die_atlas_layout.clone(),
-                frames: 24,
-                fps: 14.0,
+                frames: ENEMY_DIE_FRAMES,
+                fps: ENEMY_DIE_FPS,
                 looping: false,
                 ping_pong: false,
             },
@@ -575,15 +580,10 @@ fn spawn_enemy(
     let initial_animation = CurrentAnimation {
         current_frame: 0,
         timer: Timer::from_seconds(0.1, TimerMode::Repeating),
-        total_frames: 8,
+        total_frames: ENEMY_IDLE_FRAMES,
         looping: true,
         reverse_direction: false,
     };
-
-    // Factor de escala para el enemigo
-    let scale_factor = 2.0;
-    // Ajuste de la posición Y para evitar que los pies estén bajo el suelo
-    let adjusted_y = enemy_y + ((scale_factor - 1.0) * 32.0); // 32 es la mitad de la altura original (64)
 
     // Crear entidad del enemigo con escala uniforme
     commands
@@ -596,17 +596,17 @@ fn spawn_enemy(
                 },
             ),
             Enemy {
-                health: 200.0,
-                max_health: 50.0,
-                attack: 10.0,
-                defense: 5.0,
-                speed: 150.0,
-                attack_range: 146.0,
-                detection_range: 400.0,
+                health: ENEMY_INITIAL_HEALTH,
+                max_health: ENEMY_MAX_HEALTH,
+                attack: ENEMY_ATTACK,
+                defense: ENEMY_DEFENSE,
+                speed: ENEMY_SPEED,
+                attack_range: ENEMY_ATTACK_RANGE,
+                detection_range: ENEMY_DETECTION_RANGE,
                 facing_right: false,
                 is_dead: false,
-                death_timer: Timer::from_seconds(3.0, TimerMode::Once),
-                hurt_timer: Timer::from_seconds(0.3, TimerMode::Once),
+                death_timer: Timer::from_seconds(ENEMY_DEATH_TIMER, TimerMode::Once),
+                hurt_timer: Timer::from_seconds(ENEMY_HURT_TIMER, TimerMode::Once),
             },
             Physics {
                 velocity: Vec2::ZERO,
@@ -614,9 +614,9 @@ fn spawn_enemy(
                 on_ground: true,
                 gravity_scale: 1.0,
             },
-            Transform::from_xyz(spawn_x, adjusted_y, 5.0).with_scale(Vec3::new(
-                scale_factor,
-                scale_factor,
+            Transform::from_xyz(spawn_x, enemy_y, 5.0).with_scale(Vec3::new(
+                ENEMY_SCALE_FACTOR,
+                ENEMY_SCALE_FACTOR,
                 1.0,
             )),
             Anchor::Center,
@@ -628,22 +628,22 @@ fn spawn_enemy(
             parent.spawn((
                 CollisionHitbox {
                     active: true,
-                    size: Vec2::new(64.0, 64.0),
+                    size: ENEMY_COLLISION_SIZE * ENEMY_SCALE_FACTOR,
                 },
-                Mesh2d(meshes.add(Rectangle::from_size(Vec2::new(32., 32.)))),
+                Mesh2d(meshes.add(Rectangle::from_size(ENEMY_COLLISION_SIZE))),
                 MeshMaterial2d(materials.add(Color::Srgba(Srgba {
                     red: 0.,
                     green: 0.,
                     blue: 255.,
                     alpha: 0.1,
                 }))),
-                Transform::from_scale(Vec3::new(scale_factor, scale_factor, 1.0)),
+                Transform::from_scale(Vec3::new(ENEMY_SCALE_FACTOR, ENEMY_SCALE_FACTOR, 1.0))
+                    .with_translation(Vec3::new(0.0, -ENEMY_FEET_OFFSET * 0.5, 0.0)),
                 Anchor::Center,
             ));
         });
 }
 
-// Reemplazar el setup_enemy original con esta función que crea 2 enemigos
 fn setup_enemies(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -668,5 +668,3 @@ fn setup_enemies(
         enemy_counter.current_count += 1;
     }
 }
-
-// Modificar el sistema de limpieza para actualizar el contador

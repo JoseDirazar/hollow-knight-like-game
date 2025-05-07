@@ -4,10 +4,13 @@ pub mod animations;
 pub mod enemy;
 pub mod game;
 pub mod ground;
+pub mod menu;
 pub mod paralax_background;
+pub mod pause;
 pub mod physics;
 pub mod player;
 pub mod resolution;
+pub mod utils;
 
 fn main() {
     App::new()
@@ -15,7 +18,7 @@ fn main() {
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {
-                        title: String::from("Solid Knight"),
+                        title: String::from(resolution::WINDOW_TITLE),
                         position: WindowPosition::Centered(MonitorSelection::Primary),
                         resolution: resolution::SCREEN_DIMENSIONS.into(),
                         mode: bevy::window::WindowMode::Windowed,
