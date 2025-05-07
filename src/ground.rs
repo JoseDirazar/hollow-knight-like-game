@@ -1,16 +1,22 @@
 use crate::game::GameState;
 use crate::physics::Physics;
-use crate::resolution::Resolution;
+use crate::resolution::{Resolution, GROUND_HEIGHT_RATIO};
 use bevy::prelude::*;
 
+// Ground Constants
 const PLAYER_HEIGHT: f32 = 160.0;
 const GROUND_HEIGHT: f32 = 19.0;
-// Ajustado basado en los logs y las diferencias de posición observadas
-pub const PLAYER_FEET_OFFSET: f32 = 25.0;
+const PLAYER_FEET_OFFSET: f32 = 25.0;
+const ENEMY_FEET_OFFSET: f32 = 32.0;
 const GROUND_REPEAT: i32 = 28;
+const GROUND_SCALE_FACTOR: f32 = 1.8;
+const GROUND_TILE_SIZE: UVec2 = UVec2::new(19, 19);
+const GROUND_TILE_COLUMNS: u32 = 19;
+const GROUND_TILE_ROWS: u32 = 1;
+const GROUND_DEFAULT_TILE_INDEX: usize = 3;
+const GROUND_COLLISION_TOLERANCE: f32 = 10.0;
+const GROUND_COLLISION_RANGE: f32 = 15.0;
 
-// Valor ajustado para el enemigo
-pub const ENEMY_FEET_OFFSET: f32 = 32.0;
 pub struct GroundPlugin;
 
 impl Plugin for GroundPlugin {
@@ -32,6 +38,7 @@ pub struct Ground {
     pub original_position: Vec3,
     pub position_index: i32,
 }
+
 fn setup_ground(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -46,14 +53,19 @@ fn setup_ground(
     let texture_handle = asset_server.load("world/levels/1/ground/ground-230x19.png");
 
     // Usar 6x6 grilla con tiles de 160x160 px
-    let tile_size = UVec2::new(19, 19);
-    let ground_atlas = TextureAtlasLayout::from_grid(tile_size, 19, 1, None, None);
+    let ground_atlas = TextureAtlasLayout::from_grid(
+        GROUND_TILE_SIZE,
+        GROUND_TILE_COLUMNS,
+        GROUND_TILE_ROWS,
+        None,
+        None,
+    );
     let ground_atlas_layout = texture_atlas_layouts.add(ground_atlas);
 
     // Escalado y posicionamiento
-    let scale_factor = resolution.pixel_ratio * 1.8;
-    let scaled_width = tile_size.x as f32 * scale_factor;
-    let ground_height = -window_height * 0.45;
+    let scale_factor = resolution.pixel_ratio * GROUND_SCALE_FACTOR;
+    let scaled_width = GROUND_TILE_SIZE.x as f32 * scale_factor;
+    let ground_height = -window_height * GROUND_HEIGHT_RATIO;
 
     // Entidad padre
     let ground_parent = commands
@@ -65,9 +77,6 @@ fn setup_ground(
         ))
         .id();
 
-    // Tile que queremos renderizar, ej: tile 30
-    let tile_index = 3;
-
     // Crear los bloques de suelo
     commands.entity(ground_parent).with_children(|parent| {
         for i in 0..=GROUND_REPEAT {
@@ -78,7 +87,7 @@ fn setup_ground(
                     texture_handle.clone(),
                     TextureAtlas {
                         layout: ground_atlas_layout.clone(),
-                        index: tile_index,
+                        index: GROUND_DEFAULT_TILE_INDEX,
                     },
                 ),
                 Transform::from_xyz(x_pos, ground_height, 10.0).with_scale(Vec3::new(
@@ -119,18 +128,16 @@ fn update_ground_position(
 
             if transform.translation.x < camera_x - half_window - (ground.sprite_width / 2.0) {
                 // This ground piece is off-screen to the left, move it to the right
-                // Move it 5 positions to the right
                 transform.translation.x += ground.sprite_width * GROUND_REPEAT as f32;
 
                 // Update position index
-                ground.position_index += 28;
+                ground.position_index += GROUND_REPEAT;
 
                 // Update original position
                 ground.original_position.x = transform.translation.x;
             } else if transform.translation.x > camera_x + half_window + (ground.sprite_width / 2.0)
             {
                 // This ground piece is off-screen to the right, move it to the left
-                // Move it 5 positions to the left
                 transform.translation.x -= ground.sprite_width * GROUND_REPEAT as f32;
 
                 // Update position index
@@ -155,7 +162,6 @@ pub fn ground_collision(
         // Check if this entity is the player based on its Z position
         // Player is at Z=0, enemies are at Z=5
         let is_player = character_transform.translation.z == 0.0;
-        // Debug information
         // Use the appropriate feet offset based on entity type
         let feet_offset = if is_player {
             PLAYER_FEET_OFFSET
@@ -170,8 +176,8 @@ pub fn ground_collision(
             let ground_scale = ground_transform.scale.y.abs();
             let ground_top = ground_transform.translation.y + (GROUND_HEIGHT / 2.0) * ground_scale;
             if physics.velocity.y <= 0.0
-                && character_feet <= ground_top + 10.0
-                && character_feet >= ground_top - 15.0
+                && character_feet <= ground_top + GROUND_COLLISION_TOLERANCE
+                && character_feet >= ground_top - GROUND_COLLISION_RANGE
                 && (character_transform.translation.x - ground_transform.translation.x).abs()
                     < ground.sprite_width / 2.0
             {

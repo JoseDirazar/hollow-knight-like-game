@@ -2,9 +2,9 @@ use bevy::prelude::*;
 
 use crate::game::GameState;
 
-const NORMAL_BUTTON: Color = Color::rgb(0.15, 0.15, 0.15);
-const HOVERED_BUTTON: Color = Color::rgb(0.25, 0.25, 0.25);
-const PRESSED_BUTTON: Color = Color::rgb(0.35, 0.75, 0.35);
+const NORMAL_BUTTON: Color = Color::srgb(0.15, 0.15, 0.15);
+const HOVERED_BUTTON: Color = Color::srgb(0.25, 0.25, 0.25);
+const PRESSED_BUTTON: Color = Color::srgb(0.35, 0.75, 0.35);
 
 // Component to mark the start button
 #[derive(Component)]
@@ -18,7 +18,7 @@ pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Menu), setup_menu)
+        app.add_systems(OnEnter(GameState::Menu), setup_menu.run_if(in_state(GameState::Menu)))
             .add_systems(
                 Update,
                 handle_start_button.run_if(in_state(GameState::Menu)),
@@ -38,7 +38,7 @@ fn setup_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                 justify_content: JustifyContent::Center,
                 ..default()
             },
-            BackgroundColor(Color::rgba(0.1, 0.1, 0.1, 0.9)),
+            BackgroundColor(Color::srgba(0.1, 0.1, 0.1, 1.)),
             MenuUI,
         ))
         .with_children(|parent| {
@@ -52,7 +52,7 @@ fn setup_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                         justify_content: JustifyContent::Center,
                         ..default()
                     },
-                    BackgroundColor(Color::rgba(0.1, 0.1, 0.1, 0.9)),
+                    BackgroundColor(Color::srgba(0.1, 0.1, 0.1, 0.9)),
                 ))
                 .with_children(|parent| {
                     // Game title
@@ -127,7 +127,7 @@ fn handle_start_button(
             Interaction::Pressed => {
                 **text = "Starting...".to_string();
                 *color = PRESSED_BUTTON.into();
-                border_color.0 = Color::rgb(1.0, 0.0, 0.0);
+                border_color.0 = Color::srgb(1.0, 0.0, 0.0);
                 next_state.set(GameState::Playing);
             }
             Interaction::Hovered => {

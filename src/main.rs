@@ -11,13 +11,14 @@ pub mod physics;
 pub mod player;
 pub mod resolution;
 pub mod utils;
+
 fn main() {
     App::new()
         .add_plugins((
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {
-                        title: String::from("Solid Knight"),
+                        title: String::from(resolution::WINDOW_TITLE),
                         position: WindowPosition::Centered(MonitorSelection::Primary),
                         resolution: resolution::SCREEN_DIMENSIONS.into(),
                         mode: bevy::window::WindowMode::Windowed,

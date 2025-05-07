@@ -31,7 +31,7 @@ fn setup_pause_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                 justify_content: JustifyContent::Center,
                 ..default()
             },
-            BackgroundColor(Color::rgba(0.0, 0.0, 0.0, 0.7)),
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
             PauseMenu,
         ))
         .with_children(|parent| {
@@ -44,7 +44,7 @@ fn setup_pause_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                         justify_content: JustifyContent::Center,
                         ..default()
                     },
-                    BackgroundColor(Color::rgba(0.1, 0.1, 0.1, 0.9)),
+                    BackgroundColor(Color::srgba(0.1, 0.1, 0.1, 0.9)),
                 ))
                 .with_children(|parent| {
                     // Pause title
@@ -72,7 +72,7 @@ fn setup_pause_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                             },
                             BorderColor(Color::BLACK),
                             BorderRadius::MAX,
-                            BackgroundColor(Color::rgb(0.15, 0.15, 0.15)),
+                            BackgroundColor(Color::srgb(0.15, 0.15, 0.15)),
                         ))
                         .with_children(|parent| {
                             parent.spawn((

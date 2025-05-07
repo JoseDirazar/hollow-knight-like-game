@@ -10,6 +10,38 @@ use crate::utils;
 use bevy::prelude::*;
 use bevy::sprite::Anchor;
 
+// Constants
+const PLAYER_INITIAL_HEALTH: f32 = 100.0;
+const PLAYER_MAX_HEALTH: f32 = 100.0;
+const PLAYER_ATTACK: f32 = 10.0;
+const PLAYER_DEFENSE: f32 = 5.0;
+const PLAYER_SPEED: f32 = 250.0;
+const PLAYER_JUMP_FORCE: f32 = 500.0;
+const PLAYER_HURT_IMMUNITY_TIME: f32 = 0.4;
+const PLAYER_COLLISION_SIZE: Vec2 = Vec2::new(45.0, 45.0);
+const PLAYER_ATTACK_HITBOX_SIZE: Vec2 = Vec2::new(40.0, 30.0);
+const PLAYER_CHARGE_ATTACK_HITBOX_SIZE: Vec2 = Vec2::new(84.0, 30.0);
+const PLAYER_ATTACK_HITBOX_DURATION: f32 = 0.1;
+const PLAYER_ATTACK_HITBOX_OFFSET: f32 = 0.5;
+const PLAYER_FEET_OFFSET: f32 = 10.0;
+
+// Animation Constants
+const PLAYER_IDLE_FRAMES: usize = 11;
+const PLAYER_ATTACK_FRAMES: usize = 7;
+const PLAYER_CHARGE_ATTACK_FRAMES: usize = 7;
+const PLAYER_RUN_FRAMES: usize = 8;
+const PLAYER_JUMP_FRAMES: usize = 3;
+const PLAYER_HURT_FRAMES: usize = 4;
+const PLAYER_FALL_FRAMES: usize = 3;
+
+const PLAYER_IDLE_FPS: f32 = 10.0;
+const PLAYER_ATTACK_FPS: f32 = 20.0;
+const PLAYER_CHARGE_ATTACK_FPS: f32 = 12.0;
+const PLAYER_RUN_FPS: f32 = 15.0;
+const PLAYER_JUMP_FPS: f32 = 18.0;
+const PLAYER_HURT_FPS: f32 = 10.0;
+const PLAYER_FALL_FPS: f32 = 10.0;
+
 // Plugin principal del jugador
 pub struct PlayerPlugin;
 
@@ -105,29 +137,27 @@ fn update_attack_hitbox(
                 };
 
                 let hitbox_size = if current_state == CharacterState::Attacking {
-                    Vec2::new(40., 30.0)
+                    PLAYER_ATTACK_HITBOX_SIZE
                 } else {
-                    Vec2::new(84.0, 30.0)
+                    PLAYER_CHARGE_ATTACK_HITBOX_SIZE
                 };
-                let offset_x = hitbox_size.x * 0.5;
+                let offset_x = hitbox_size.x * PLAYER_ATTACK_HITBOX_OFFSET;
 
-                // Crear entidad hija para la hitbox
                 commands.entity(entity).with_children(|parent| {
                     parent.spawn((
                         AttackHitbox {
                             damage,
                             active: true,
                             size: hitbox_size,
-                            timer: Timer::from_seconds(0.1, TimerMode::Once),
+                            timer: Timer::from_seconds(PLAYER_ATTACK_HITBOX_DURATION, TimerMode::Once),
                         },
                         Transform::from_translation(Vec3::new(offset_x, 0., 0.)),
-                        // .with_scale(Vec3::splat(resolution.pixel_ratio)),
                         Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
                         MeshMaterial2d(materials.add(Color::Srgba(Srgba {
                             red: 0.,
                             green: 255.,
                             blue: 0.,
-                            alpha: 0.1,
+                            alpha: 0.7,
                         }))),
                     ));
                 });
@@ -268,10 +298,10 @@ fn player_jump(
 ) {
     for (mut physics, animation_controller) in &mut query {
         let current_state = animation_controller.get_current_state();
-        let can_jump = can_move(&current_state); // Usar la misma lógica de can_move
+        let can_jump = can_move(&current_state);
 
         if keyboard.just_pressed(KeyCode::Space) && physics.on_ground && can_jump {
-            physics.velocity.y = 500.0; // Fuerza de salto
+            physics.velocity.y = PLAYER_JUMP_FORCE;
             physics.on_ground = false;
         }
     }
@@ -288,7 +318,6 @@ fn can_move(state: &CharacterState) -> bool {
 
 fn update_animations(
     mut query: Query<(&mut AnimationController, &Physics, &Player)>,
-    time: Res<Time>,
 ) {
     for (mut animation_controller, physics, player) in &mut query {
         let current_state = animation_controller.get_current_state();
@@ -471,13 +500,13 @@ fn setup_player(
             // Estadísticas del jugador
             Player {
                 name: "Hero".to_string(),
-                health: 100.0,
-                max_health: 100.0,
-                attack: 10.0,
-                defense: 5.0,
-                speed: 250.0,
+                health: PLAYER_INITIAL_HEALTH,
+                max_health: PLAYER_MAX_HEALTH,
+                attack: PLAYER_ATTACK,
+                defense: PLAYER_DEFENSE,
+                speed: PLAYER_SPEED,
                 facing_right: true, // Inicialmente mirando a la derecha
-                hurt_timer: Timer::from_seconds(0.4, TimerMode::Once), // Timer para inmunidad
+                hurt_timer: Timer::from_seconds(PLAYER_HURT_IMMUNITY_TIME, TimerMode::Once), // Timer para inmunidad
             },
             Physics {
                 velocity: Vec2::ZERO,
@@ -495,16 +524,17 @@ fn setup_player(
             parent.spawn((
                 CollisionHitbox {
                     active: true,
-                    size: Vec2::new(64.0, 64.0),
+                    size: PLAYER_COLLISION_SIZE * resolution.pixel_ratio,
                 },
-                Mesh2d(meshes.add(Rectangle::from_size(Vec2::new(32., 32.)))),
+                Mesh2d(meshes.add(Rectangle::from_size(PLAYER_COLLISION_SIZE))),
                 MeshMaterial2d(materials.add(Color::Srgba(Srgba {
                     red: 255.,
                     green: 0.,
                     blue: 0.,
                     alpha: 0.1,
                 }))),
-                Transform::from_scale(Vec3::splat(resolution.pixel_ratio)),
+                Transform::from_scale(Vec3::splat(resolution.pixel_ratio))
+                    .with_translation(Vec3::new(0.0, -PLAYER_FEET_OFFSET * 0.5, 0.0)),
                 Anchor::Center,
             ));
         });

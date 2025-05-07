@@ -10,6 +10,40 @@ use crate::utils;
 use bevy::prelude::*;
 use bevy::sprite::Anchor;
 
+// Constants
+const ENEMY_INITIAL_HEALTH: f32 = 200.0;
+const ENEMY_MAX_HEALTH: f32 = 50.0;
+const ENEMY_ATTACK: f32 = 10.0;
+const ENEMY_DEFENSE: f32 = 5.0;
+const ENEMY_SPEED: f32 = 150.0;
+const ENEMY_ATTACK_RANGE: f32 = 146.0;
+const ENEMY_DETECTION_RANGE: f32 = 400.0;
+const ENEMY_COLLISION_SIZE: Vec2 = Vec2::new(32.0, 32.0);
+const ENEMY_ATTACK_HITBOX_SIZE: Vec2 = Vec2::new(73.0, 30.0);
+const ENEMY_CHARGE_ATTACK_HITBOX_SIZE: Vec2 = Vec2::new(78.0, 30.0);
+const ENEMY_ATTACK_HITBOX_DURATION: f32 = 0.1;
+const ENEMY_ATTACK_HITBOX_OFFSET: f32 = 0.6;
+const ENEMY_DEATH_TIMER: f32 = 3.0;
+const ENEMY_HURT_TIMER: f32 = 0.3;
+const ENEMY_DESIRED_COUNT: usize = 2;
+const ENEMY_SPAWN_OFFSET_X: f32 = 20.0;
+const ENEMY_SPAWN_OFFSET_Y: f32 = 90.0;
+const ENEMY_SCALE_FACTOR: f32 = 2.0;
+const ENEMY_FEET_OFFSET: f32 = 0.5;
+
+// Animation Constants
+const ENEMY_IDLE_FRAMES: usize = 8;
+const ENEMY_ATTACK_FRAMES: usize = 23;
+const ENEMY_MOVE_FRAMES: usize = 10;
+const ENEMY_HURT_FRAMES: usize = 3;
+const ENEMY_DIE_FRAMES: usize = 24;
+
+const ENEMY_IDLE_FPS: f32 = 14.0;
+const ENEMY_ATTACK_FPS: f32 = 14.0;
+const ENEMY_MOVE_FPS: f32 = 14.0;
+const ENEMY_HURT_FPS: f32 = 10.0;
+const ENEMY_DIE_FPS: f32 = 14.0;
+
 // Componente para el enemigo
 #[derive(Component)]
 pub struct Enemy {
@@ -56,7 +90,7 @@ impl Default for EnemyCounter {
     fn default() -> Self {
         Self {
             current_count: 0,
-            desired_count: 2, // Queremos mantener 2 enemigos activos
+            desired_count: ENEMY_DESIRED_COUNT,
         }
     }
 }
@@ -150,11 +184,11 @@ fn update_attack_hitbox(
                 };
 
                 let hitbox_size = if current_state == CharacterState::Attacking {
-                    Vec2::new(73., 30.0)
+                    ENEMY_ATTACK_HITBOX_SIZE
                 } else {
-                    Vec2::new(78.0, 30.0)
+                    ENEMY_CHARGE_ATTACK_HITBOX_SIZE
                 };
-                let offset_x = hitbox_size.x * 0.6;
+                let offset_x = hitbox_size.x * ENEMY_ATTACK_HITBOX_OFFSET;
 
                 // Crear entidad hija para la hitbox
                 commands.entity(entity).with_children(|parent| {
@@ -163,7 +197,7 @@ fn update_attack_hitbox(
                             damage,
                             active: true,
                             size: hitbox_size,
-                            timer: Timer::from_seconds(0.1, TimerMode::Once),
+                            timer: Timer::from_seconds(ENEMY_ATTACK_HITBOX_DURATION, TimerMode::Once),
                         },
                         Transform::from_translation(Vec3::new(-offset_x, 0., 0.)),
                         Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
@@ -399,8 +433,8 @@ fn check_death(mut query: Query<(&mut Enemy, &mut AnimationController, &mut Tran
         if enemy.health <= 0.0 && !enemy.is_dead {
             enemy.is_dead = true;
             animation_controller.change_state(CharacterState::Dead);
-            enemy.death_timer = Timer::from_seconds(3.0, TimerMode::Once);
-            transform.translation.x -= 20.0;
+            enemy.death_timer = Timer::from_seconds(ENEMY_DEATH_TIMER, TimerMode::Once);
+            transform.translation.x -= ENEMY_SPAWN_OFFSET_X;
         }
     }
 }
@@ -466,11 +500,10 @@ fn spawn_enemy(
     let window_height = window.height();
     let ground_height = -window_height * 0.3;
 
-    // Generar posición aleatoria en los bordes de la pantalla
     let spawn_side = if rand::random::<bool>() { 1.0 } else { -1.0 };
-    let spawn_x = spawn_side * (window_width * 0.4); // 40% desde el centro hacia los bordes
+    let spawn_x = spawn_side * (window_width * 0.4);
 
-    let enemy_y = ground_height + 90.0 * resolution.pixel_ratio;
+    let enemy_y = ground_height + ENEMY_SPAWN_OFFSET_Y * resolution.pixel_ratio;
 
     let idle_texture = asset_server.load("enemy/skeleton/skeletonIdle-Sheet64x64.png");
     let attack_texture = asset_server.load("enemy/skeleton/skeletonAttack-cropped.png");
@@ -499,8 +532,8 @@ fn spawn_enemy(
                 state: CharacterState::Idle,
                 texture: idle_texture.clone(),
                 atlas_layout: idle_atlas_layout.clone(),
-                frames: 8,
-                fps: 14.0,
+                frames: ENEMY_IDLE_FRAMES,
+                fps: ENEMY_IDLE_FPS,
                 looping: true,
                 ping_pong: false,
             },
@@ -508,8 +541,8 @@ fn spawn_enemy(
                 state: CharacterState::Attacking,
                 texture: attack_texture.clone(),
                 atlas_layout: attack_atlas_layout.clone(),
-                frames: 23,
-                fps: 14.0,
+                frames: ENEMY_ATTACK_FRAMES,
+                fps: ENEMY_ATTACK_FPS,
                 looping: false,
                 ping_pong: false,
             },
@@ -517,8 +550,8 @@ fn spawn_enemy(
                 state: CharacterState::Running,
                 texture: move_texture.clone(),
                 atlas_layout: move_atlas_layout.clone(),
-                frames: 10,
-                fps: 14.0,
+                frames: ENEMY_MOVE_FRAMES,
+                fps: ENEMY_MOVE_FPS,
                 looping: true,
                 ping_pong: false,
             },
@@ -526,8 +559,8 @@ fn spawn_enemy(
                 state: CharacterState::Hurt,
                 texture: hurt_texture.clone(),
                 atlas_layout: hurt_atlas_layout.clone(),
-                frames: 3,
-                fps: 10.0,
+                frames: ENEMY_HURT_FRAMES,
+                fps: ENEMY_HURT_FPS,
                 looping: false,
                 ping_pong: false,
             },
@@ -535,8 +568,8 @@ fn spawn_enemy(
                 state: CharacterState::Dead,
                 texture: die_texture.clone(),
                 atlas_layout: die_atlas_layout.clone(),
-                frames: 24,
-                fps: 14.0,
+                frames: ENEMY_DIE_FRAMES,
+                fps: ENEMY_DIE_FPS,
                 looping: false,
                 ping_pong: false,
             },
@@ -547,15 +580,10 @@ fn spawn_enemy(
     let initial_animation = CurrentAnimation {
         current_frame: 0,
         timer: Timer::from_seconds(0.1, TimerMode::Repeating),
-        total_frames: 8,
+        total_frames: ENEMY_IDLE_FRAMES,
         looping: true,
         reverse_direction: false,
     };
-
-    // Factor de escala para el enemigo
-    let scale_factor = 2.0;
-    // Ajuste de la posición Y para evitar que los pies estén bajo el suelo
-    let adjusted_y = enemy_y + ((scale_factor - 1.0) * 32.0); // 32 es la mitad de la altura original (64)
 
     // Crear entidad del enemigo con escala uniforme
     commands
@@ -568,17 +596,17 @@ fn spawn_enemy(
                 },
             ),
             Enemy {
-                health: 200.0,
-                max_health: 50.0,
-                attack: 10.0,
-                defense: 5.0,
-                speed: 150.0,
-                attack_range: 146.0,
-                detection_range: 400.0,
+                health: ENEMY_INITIAL_HEALTH,
+                max_health: ENEMY_MAX_HEALTH,
+                attack: ENEMY_ATTACK,
+                defense: ENEMY_DEFENSE,
+                speed: ENEMY_SPEED,
+                attack_range: ENEMY_ATTACK_RANGE,
+                detection_range: ENEMY_DETECTION_RANGE,
                 facing_right: false,
                 is_dead: false,
-                death_timer: Timer::from_seconds(3.0, TimerMode::Once),
-                hurt_timer: Timer::from_seconds(0.3, TimerMode::Once),
+                death_timer: Timer::from_seconds(ENEMY_DEATH_TIMER, TimerMode::Once),
+                hurt_timer: Timer::from_seconds(ENEMY_HURT_TIMER, TimerMode::Once),
             },
             Physics {
                 velocity: Vec2::ZERO,
@@ -586,9 +614,9 @@ fn spawn_enemy(
                 on_ground: true,
                 gravity_scale: 1.0,
             },
-            Transform::from_xyz(spawn_x, adjusted_y, 5.0).with_scale(Vec3::new(
-                scale_factor,
-                scale_factor,
+            Transform::from_xyz(spawn_x, enemy_y, 5.0).with_scale(Vec3::new(
+                ENEMY_SCALE_FACTOR,
+                ENEMY_SCALE_FACTOR,
                 1.0,
             )),
             Anchor::Center,
@@ -600,16 +628,17 @@ fn spawn_enemy(
             parent.spawn((
                 CollisionHitbox {
                     active: true,
-                    size: Vec2::new(64.0, 64.0),
+                    size: ENEMY_COLLISION_SIZE * ENEMY_SCALE_FACTOR,
                 },
-                Mesh2d(meshes.add(Rectangle::from_size(Vec2::new(32., 32.)))),
+                Mesh2d(meshes.add(Rectangle::from_size(ENEMY_COLLISION_SIZE))),
                 MeshMaterial2d(materials.add(Color::Srgba(Srgba {
                     red: 0.,
                     green: 0.,
                     blue: 255.,
                     alpha: 0.1,
                 }))),
-                Transform::from_scale(Vec3::new(scale_factor, scale_factor, 1.0)),
+                Transform::from_scale(Vec3::new(ENEMY_SCALE_FACTOR, ENEMY_SCALE_FACTOR, 1.0))
+                    .with_translation(Vec3::new(0.0, -ENEMY_FEET_OFFSET * 0.5, 0.0)),
                 Anchor::Center,
             ));
         });
