@@ -172,7 +172,7 @@ fn update_attack_hitbox(
         if is_attacking && !has_active_hitbox {
             let should_create_hitbox = match current_animation.current_frame {
                 4 => true,  // Primer ataque
-                13 => true, // Segundo ataque (cargado)
+                13..16 => true, // Segundo ataque (cargado)
                 _ => false,
             };
 
@@ -199,7 +199,7 @@ fn update_attack_hitbox(
                             size: hitbox_size,
                             timer: Timer::from_seconds(ENEMY_ATTACK_HITBOX_DURATION, TimerMode::Once),
                         },
-                        Transform::from_translation(Vec3::new(-offset_x, 0., 0.)),
+                        Transform::from_translation(Vec3::new(-offset_x, 0., 0.)), //why is offset negative in order to work? on player it is positive LUL
                         Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
                         MeshMaterial2d(materials.add(Color::Srgba(Srgba {
                             red: 200.,
@@ -416,9 +416,9 @@ fn handle_damage(
                         enemy.health -= damage;
                         animation_controller.change_state(CharacterState::Hurt);
 
-                        // Aplicar impulso físico: hacia atrás y hacia arriba
-                        let direction = utils::direction_vector(attack_pos, enemy_pos);
-                        physics.velocity += Vec2::new(direction.x * 2150.0, 120.0);
+                        // Aplicar impulso físico constante basado en la dirección del ataque
+                        let direction = if attack_pos.x > enemy_pos.x { -1.0 } else { 1.0 };
+                        physics.velocity = Vec2::new(direction * 2150.0, direction * 120.0);
                         physics.on_ground = false;
                     }
                     break; // solo un golpe por frame

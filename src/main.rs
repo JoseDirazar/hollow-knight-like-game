@@ -28,7 +28,7 @@ fn main() {
                     ..default()
                 })
                 .set(ImagePlugin::default_nearest()),
-            game::GamePlugin,
+                game::GamePlugin,
         ))
         .run();
 }
