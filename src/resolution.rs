@@ -8,7 +8,7 @@ pub const SCREEN_DIMENSIONS: Vec2 = Vec2::new(SCREEN_WIDTH, SCREEN_HEIGHT);
 pub const PIXEL_RATIO: f32 = 2.0;
 
 // Ground Constants
-pub const GROUND_HEIGHT_RATIO: f32 = 0.3; // 30% from bottom of screen
+pub const GROUND_HEIGHT_RATIO: f32 = 0.45; // 30% from bottom of screen
 
 pub struct ResolutionPlugin;
 

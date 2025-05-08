@@ -37,7 +37,8 @@ impl Plugin for GamePlugin {
                 ground::GroundPlugin,
                 enemy::EnemyPlugin,
             ))
-            .add_systems(Startup, setup_camera);
+            .add_systems(Startup, setup_camera)
+        .add_systems(Update, paralax_background::monitor_performance);
     }
 }
 
