@@ -185,7 +185,7 @@ fn update_attack_hitbox(
 
         if hitbox.timer.finished() {
             hitbox.active = false;
-            commands.entity(hitbox_entity).despawn_recursive();
+            commands.entity(hitbox_entity).despawn();
         }
     }
 
@@ -206,7 +206,7 @@ fn update_attack_hitbox(
         if !is_attacking {
             for (hitbox_entity, parent, _) in hitbox_query.iter() {
                 if parent.get() == entity {
-                    commands.entity(hitbox_entity).despawn_recursive();
+                    commands.entity(hitbox_entity).despawn();
                 }
             }
             continue;
@@ -479,7 +479,11 @@ fn check_death(
     mut query: Query<(&mut Enemy, &mut AnimationController, &mut Transform)>,
     windows: Query<&Window>,
 ) {
-    let window = windows.single();
+    let window = if let Ok(window) = windows.get_single() {
+        window
+    } else {
+        return; // Skip this frame if window is not available
+    };
     let window_height = window.height();
     let death_threshold = -window_height * 0.5; // Muerte si cae por debajo de la mitad de la pantalla
 

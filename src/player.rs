@@ -115,7 +115,7 @@ fn update_attack_hitbox(
         if !is_attacking {
             for (hitbox_entity, parent, _) in hitbox_query.iter() {
                 if parent.get() == entity {
-                    commands.entity(hitbox_entity).despawn_recursive();
+                    commands.entity(hitbox_entity).despawn();
                 }
             }
             continue;

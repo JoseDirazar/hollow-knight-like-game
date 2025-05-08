@@ -216,7 +216,11 @@ fn update_parallax_background_recycled(
     camera_query: Query<&Transform, (With<Camera2d>, Without<ParallaxLayer>)>,
     windows: Query<&Window>,
 ) {
-    let window = windows.single();
+    let window = if let Ok(window) = windows.get_single() {
+        window
+    } else {
+        return; // Skip this frame if window is not available
+    };
     let window_width = window.width();
 
     if let Ok(camera_transform) = camera_query.get_single() {
@@ -329,10 +333,15 @@ fn camera_follow_player(
     windows: Query<&Window>,
     keyboard: Res<ButtonInput<KeyCode>>,
 ) {
+    let window = if let Ok(window) = windows.get_single() {
+        window
+    } else {
+        return; // Skip this frame if window is not available
+    };
+
     if let (Ok(mut camera_transform), Ok(player_transform)) =
         (camera_query.get_single_mut(), player_query.get_single())
     {
-        let window = windows.single();
         let window_width = window.width();
         let half_window = window_width / 2.0;
 
@@ -432,6 +441,10 @@ pub fn monitor_performance(
     // Print debug info if needed
     println!(
         "FPS: {:.2}, Active layers: {}, Player pos: {:.2}, camera_position: {:.2}, Enemy pos: {:.2}",
-        monitor.fps, monitor.active_layers, monitor.player_position, monitor.camera_position, monitor.enemy_position,
+        monitor.fps,
+        monitor.active_layers,
+        monitor.player_position,
+        monitor.camera_position,
+        monitor.enemy_position,
     );
 }
