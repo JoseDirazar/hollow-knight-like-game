@@ -567,7 +567,6 @@ fn spawn_enemy(
     materials: &mut ResMut<Assets<ColorMaterial>>,
 ) {
     let window = windows.single();
-    let window_width = window.width();
     let window_height = window.height();
     let ground_height = -window_height * 0.3;
 

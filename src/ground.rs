@@ -4,7 +4,6 @@ use crate::resolution::{GROUND_HEIGHT_RATIO, Resolution};
 use bevy::prelude::*;
 
 // Ground Constants
-const PLAYER_HEIGHT: f32 = 160.0;
 const GROUND_HEIGHT: f32 = 19.0;
 const PLAYER_FEET_OFFSET: f32 = 25.0;
 const ENEMY_FEET_OFFSET: f32 = 32.0;
