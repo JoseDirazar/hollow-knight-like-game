@@ -74,31 +74,31 @@ impl Default for ParallaxSettings {
             layer_configurations: vec![
                 LayerConfig {
                     path: "world/levels/1/1.png".to_string(),
-                    speed_factor: 0.1, // Farthest background (nubes) moves very little (5% of camera movement)
+                    speed_factor: 0.01, // Farthest background (nubes) moves very little (5% of camera movement)
                     z_value: -40.0,
                     dimensions: Vec2::new(128., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/2.png".to_string(),
-                    speed_factor: 0.15, // Distant clouds move slightly (10% of camera movement)
+                    speed_factor: 0.02, // Distant clouds move slightly (10% of camera movement)
                     z_value: -30.0,
                     dimensions: Vec2::new(144., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/3.png".to_string(),
-                    speed_factor: 0.20, // Mountains (30% of camera movement)
+                    speed_factor: 0.04, // Mountains (30% of camera movement)
                     z_value: -20.0,
                     dimensions: Vec2::new(160., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/4.png".to_string(),
-                    speed_factor: 0.25, // Forest (50% of camera movement)
+                    speed_factor: 0.1, // Forest (50% of camera movement)
                     z_value: -10.0,
                     dimensions: Vec2::new(320., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/5.png".to_string(),
-                    speed_factor: 0.30, // Closest to foreground, moves the most (80% of camera movement)
+                    speed_factor: 0.20, // Closest to foreground, moves the most (80% of camera movement)
                     z_value: -5.0,
                     dimensions: Vec2::new(240., 240.),
                 },

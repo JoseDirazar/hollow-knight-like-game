@@ -171,7 +171,7 @@ fn update_attack_hitbox(
         // Solo crear nuevo hitbox si no hay uno activo y es el inicio del ataque
         if is_attacking && !has_active_hitbox {
             let should_create_hitbox = match current_animation.current_frame {
-                4 => true,  // Primer ataque
+                4 => true,      // Primer ataque
                 13..16 => true, // Segundo ataque (cargado)
                 _ => false,
             };
@@ -197,7 +197,10 @@ fn update_attack_hitbox(
                             damage,
                             active: true,
                             size: hitbox_size,
-                            timer: Timer::from_seconds(ENEMY_ATTACK_HITBOX_DURATION, TimerMode::Once),
+                            timer: Timer::from_seconds(
+                                ENEMY_ATTACK_HITBOX_DURATION,
+                                TimerMode::Once,
+                            ),
                         },
                         Transform::from_translation(Vec3::new(-offset_x, 0., 0.)), //why is offset negative in order to work? on player it is positive LUL
                         Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
@@ -417,7 +420,11 @@ fn handle_damage(
                         animation_controller.change_state(CharacterState::Hurt);
 
                         // Aplicar impulso físico constante basado en la dirección del ataque
-                        let direction = if attack_pos.x > enemy_pos.x { -1.0 } else { 1.0 };
+                        let direction = if attack_pos.x > enemy_pos.x {
+                            -1.0
+                        } else {
+                            1.0
+                        };
                         physics.velocity = Vec2::new(direction * 2150.0, direction * 120.0);
                         physics.on_ground = false;
                     }
@@ -491,7 +498,7 @@ fn spawn_enemy(
     asset_server: &AssetServer,
     texture_atlas_layouts: &mut Assets<TextureAtlasLayout>,
     resolution: &resolution::Resolution,
-    windows: &Query<&Window>,
+    windows: &Query<&Window, With<Camera2d>>,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<ColorMaterial>>,
 ) {
@@ -501,7 +508,7 @@ fn spawn_enemy(
     let ground_height = -window_height * 0.3;
 
     let spawn_side = if rand::random::<bool>() { 1.0 } else { -1.0 };
-    let spawn_x = spawn_side * (window_width * 0.4);
+    let spawn_x = window_width * 0.4 + window..single().translation.x;
 
     let enemy_y = ground_height + ENEMY_SPAWN_OFFSET_Y * resolution.pixel_ratio;
 
