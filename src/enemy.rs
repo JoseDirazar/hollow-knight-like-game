@@ -107,7 +107,7 @@ impl Plugin for EnemyPlugin {
             .add_systems(
                 Update,
                 (
-                    initial_enemy_spawn,                 // Add a new system for initial spawn
+                    initial_enemy_spawn, // Add a new system for initial spawn
                     update_player_position,
                     update_enemy_movement,
                     update_enemy_animations,
@@ -140,12 +140,12 @@ fn initial_enemy_spawn(
     if enemy_counter.initial_spawn_done {
         return;
     }
-    
+
     // Check if camera is available
     if camera_query.is_empty() {
         return; // No camera yet, try again next frame
     }
-    
+
     // Camera is available, spawn initial enemies
     for _ in 0..enemy_counter.desired_count {
         spawn_enemy(
@@ -160,7 +160,7 @@ fn initial_enemy_spawn(
         );
         enemy_counter.current_count += 1;
     }
-    
+
     // Mark initial spawn as complete
     enemy_counter.initial_spawn_done = true;
 }
@@ -215,7 +215,7 @@ fn update_attack_hitbox(
         // Only create new hitbox if none active and it's the start of the attack
         if is_attacking && !has_active_hitbox {
             let should_create_hitbox = match current_animation.current_frame {
-                4 => true,  // First attack
+                4 => true,      // First attack
                 13..16 => true, // Second attack (charged)
                 _ => false,
             };
@@ -241,7 +241,10 @@ fn update_attack_hitbox(
                             damage,
                             active: true,
                             size: hitbox_size,
-                            timer: Timer::from_seconds(ENEMY_ATTACK_HITBOX_DURATION, TimerMode::Once),
+                            timer: Timer::from_seconds(
+                                ENEMY_ATTACK_HITBOX_DURATION,
+                                TimerMode::Once,
+                            ),
                         },
                         Transform::from_translation(Vec3::new(-offset_x, 0., 0.)),
                         Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
@@ -457,7 +460,11 @@ fn handle_damage(
                         animation_controller.change_state(CharacterState::Hurt);
 
                         // Apply constant physical impulse based on attack direction
-                        let direction = if attack_pos.x > enemy_pos.x { -1.0 } else { 1.0 };
+                        let direction = if attack_pos.x > enemy_pos.x {
+                            -1.0
+                        } else {
+                            1.0
+                        };
                         physics.velocity = Vec2::new(direction * 2150.0, direction * 120.0);
                         physics.on_ground = false;
                     }
@@ -484,7 +491,7 @@ fn check_death(
             enemy.death_timer = Timer::from_seconds(ENEMY_DEATH_TIMER, TimerMode::Once);
             transform.translation.x -= ENEMY_SPAWN_OFFSET_X;
         }
-        
+
         // Verificar si el enemigo está fuera de los límites
         if transform.translation.x < -1000.0 || transform.translation.y < death_threshold {
             if !enemy.is_dead {
@@ -563,7 +570,7 @@ fn spawn_enemy(
     let window_width = window.width();
     let window_height = window.height();
     let ground_height = -window_height * 0.3;
-    
+
     // Get camera position safely
     let camera_transform = if let Ok(transform) = camera_query.get_single() {
         transform
@@ -571,12 +578,12 @@ fn spawn_enemy(
         // Fallback if camera not found
         return;
     };
-    
+
     // Randomize spawn side (left or right of camera)
     let spawn_side = if rand::random::<bool>() { 1.0 } else { -1.0 };
-    
+
     // Calculate spawn position relative to camera
-    let spawn_x = camera_transform.translation.x + ( ENEMY_SPAWN_OFFSET_X);
+    let spawn_x = camera_transform.translation.x + (ENEMY_SPAWN_OFFSET_X);
     let enemy_y = ground_height + ENEMY_SPAWN_OFFSET_Y * resolution.pixel_ratio;
 
     let idle_texture = asset_server.load("enemy/skeleton/skeletonIdle-Sheet64x64.png");
@@ -661,7 +668,11 @@ fn spawn_enemy(
 
     // Set facing direction based on spawn side
     let facing_right = spawn_side < 0.0;
-    let scale_x = if facing_right { -ENEMY_SCALE_FACTOR } else { ENEMY_SCALE_FACTOR };
+    let scale_x = if facing_right {
+        -ENEMY_SCALE_FACTOR
+    } else {
+        ENEMY_SCALE_FACTOR
+    };
 
     // Create enemy entity with uniform scale
     commands

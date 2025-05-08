@@ -1,6 +1,6 @@
 use crate::game::GameState;
 use crate::physics::Physics;
-use crate::resolution::{Resolution, GROUND_HEIGHT_RATIO};
+use crate::resolution::{GROUND_HEIGHT_RATIO, Resolution};
 use bevy::prelude::*;
 
 // Ground Constants
@@ -25,8 +25,10 @@ impl Plugin for GroundPlugin {
             Update,
             (
                 update_ground_position,
-                ground_collision.run_if(in_state(GameState::Playing)),
-            ),
+                ground_collision,
+                check_characters_out_of_screen,
+            )
+                .run_if(in_state(GameState::Playing)),
         );
     }
 }
@@ -188,6 +190,21 @@ pub fn ground_collision(
                 physics.on_ground = true;
                 break;
             }
+        }
+    }
+}
+
+pub fn check_characters_out_of_screen(
+    mut characters_query: Query<(Entity, &mut Transform), Without<Ground>>,
+    windows: Query<&Window>,
+) {
+    let window = windows.single();
+    let window_height = window.height();
+
+    for (_, mut character_transform) in characters_query.iter_mut() {
+        if character_transform.translation.y < -window_height / 2.0 {
+            // Character is off-screen to the left, move it to the right
+            character_transform.translation.y = window_height / 2.0;
         }
     }
 }
