@@ -493,7 +493,6 @@ fn check_death(
             enemy.is_dead = true;
             animation_controller.change_state(CharacterState::Dead);
             enemy.death_timer = Timer::from_seconds(ENEMY_DEATH_TIMER, TimerMode::Once);
-            transform.translation.x -= ENEMY_SPAWN_OFFSET_X;
         }
 
         // Verificar si el enemigo está fuera de los límites
