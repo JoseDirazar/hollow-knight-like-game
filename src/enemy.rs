@@ -132,8 +132,8 @@ fn initial_enemy_spawn(
     resolution: Res<resolution::Resolution>,
     windows: Query<&Window>,
     mut enemy_counter: ResMut<EnemyCounter>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    // mut meshes: ResMut<Assets<Mesh>>,
+    // mut materials: ResMut<Assets<ColorMaterial>>,
     camera_query: Query<&Transform, With<Camera2d>>,
 ) {
     // Only run this system if we haven't spawned initial enemies yet
@@ -155,8 +155,8 @@ fn initial_enemy_spawn(
             &mut texture_atlas_layouts,
             &resolution,
             &windows,
-            &mut meshes,
-            &mut materials,
+            // &mut meshes,
+            // &mut materials,
         );
         enemy_counter.current_count += 1;
     }
@@ -176,8 +176,8 @@ fn update_attack_hitbox(
         &CurrentAnimation,
     )>,
     mut hitbox_query: Query<(Entity, &Parent, &mut AttackHitbox), Without<Enemy>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    // mut meshes: ResMut<Assets<Mesh>>,
+    // mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     // Update timers and remove expired hitboxes
     for (hitbox_entity, _parent, mut hitbox) in &mut hitbox_query {
@@ -247,13 +247,13 @@ fn update_attack_hitbox(
                             ),
                         },
                         Transform::from_translation(Vec3::new(-offset_x, 0., 0.)),
-                        Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
-                        MeshMaterial2d(materials.add(Color::Srgba(Srgba {
-                            red: 200.,
-                            green: 200.,
-                            blue: 0.,
-                            alpha: 0.1,
-                        }))),
+                        // Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
+                        // MeshMaterial2d(materials.add(Color::Srgba(Srgba {
+                        //     red: 200.,
+                        //     green: 200.,
+                        //     blue: 0.,
+                        //     alpha: 0.1,
+                        // }))),
                     ));
                 });
             }
@@ -487,7 +487,7 @@ fn check_death(
     let window_height = window.height();
     let death_threshold = -window_height * 0.5; // Muerte si cae por debajo de la mitad de la pantalla
 
-    for (mut enemy, mut animation_controller, mut transform) in &mut query {
+    for (mut enemy, mut animation_controller, transform) in &mut query {
         // Verificar si el enemigo está muerto por salud
         if enemy.health <= 0.0 && !enemy.is_dead {
             enemy.is_dead = true;
@@ -513,8 +513,8 @@ fn respawn_enemies(
     resolution: Res<resolution::Resolution>,
     windows: Query<&Window>,
     mut enemy_counter: ResMut<EnemyCounter>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    // mut meshes: ResMut<Assets<Mesh>>,
+    // mut materials: ResMut<Assets<ColorMaterial>>,
     camera_query: Query<&Transform, With<Camera2d>>,
 ) {
     // Skip if camera isn't available
@@ -534,8 +534,8 @@ fn respawn_enemies(
                 &mut texture_atlas_layouts,
                 &resolution,
                 &windows,
-                &mut meshes,
-                &mut materials,
+                // &mut meshes,
+                // &mut materials,
             );
             enemy_counter.current_count += 1;
         }
@@ -566,8 +566,8 @@ fn spawn_enemy(
     texture_atlas_layouts: &mut Assets<TextureAtlasLayout>,
     resolution: &resolution::Resolution,
     windows: &Query<&Window>,
-    meshes: &mut ResMut<Assets<Mesh>>,
-    materials: &mut ResMut<Assets<ColorMaterial>>,
+    // meshes: &mut ResMut<Assets<Mesh>>,
+    // materials: &mut ResMut<Assets<ColorMaterial>>,
 ) {
     let window = windows.single();
     let window_height = window.height();
@@ -721,13 +721,13 @@ fn spawn_enemy(
                     active: true,
                     size: ENEMY_COLLISION_SIZE * ENEMY_SCALE_FACTOR,
                 },
-                Mesh2d(meshes.add(Rectangle::from_size(ENEMY_COLLISION_SIZE))),
-                MeshMaterial2d(materials.add(Color::Srgba(Srgba {
-                    red: 0.,
-                    green: 0.,
-                    blue: 255.,
-                    alpha: 0.1,
-                }))),
+                // Mesh2d(meshes.add(Rectangle::from_size(ENEMY_COLLISION_SIZE))),
+                // MeshMaterial2d(materials.add(Color::Srgba(Srgba {
+                //     red: 0.,
+                //     green: 0.,
+                //     blue: 255.,
+                //     alpha: 0.1,
+                // }))),
                 Transform::from_scale(Vec3::new(ENEMY_SCALE_FACTOR, ENEMY_SCALE_FACTOR, 1.0))
                     .with_translation(Vec3::new(0.0, -ENEMY_FEET_OFFSET * 0.5, 0.0)),
                 Anchor::Center,

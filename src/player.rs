@@ -85,8 +85,8 @@ fn update_attack_hitbox(
         &CurrentAnimation,
     )>,
     mut hitbox_query: Query<(Entity, &Parent, &mut AttackHitbox)>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    // mut meshes: ResMut<Assets<Mesh>>,
+    // mut materials: ResMut<Assets<ColorMaterial>>,
     _resolution: Res<resolution::Resolution>,
 ) {
     // Primero actualizamos los timers y removemos hitboxes expiradas
@@ -155,13 +155,13 @@ fn update_attack_hitbox(
                             ),
                         },
                         Transform::from_translation(Vec3::new(offset_x, 0., 0.)),
-                        Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
-                        MeshMaterial2d(materials.add(Color::Srgba(Srgba {
-                            red: 0.,
-                            green: 255.,
-                            blue: 0.,
-                            alpha: 0.7,
-                        }))),
+                        // Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
+                        // MeshMaterial2d(materials.add(Color::Srgba(Srgba {
+                        //     red: 0.,
+                        //     green: 255.,
+                        //     blue: 0.,
+                        //     alpha: 0.7,
+                        // }))),
                     ));
                 });
             }
@@ -366,8 +366,8 @@ fn setup_player(
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     resolution: Res<resolution::Resolution>,
     windows: Query<&Window>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    // mut meshes: ResMut<Assets<Mesh>>,
+    // mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     // Get window dimensions to position player properly
     let window = windows.single();
@@ -527,13 +527,13 @@ fn setup_player(
                     active: true,
                     size: PLAYER_COLLISION_SIZE * resolution.pixel_ratio,
                 },
-                Mesh2d(meshes.add(Rectangle::from_size(PLAYER_COLLISION_SIZE))),
-                MeshMaterial2d(materials.add(Color::Srgba(Srgba {
-                    red: 255.,
-                    green: 0.,
-                    blue: 0.,
-                    alpha: 0.1,
-                }))),
+                // Mesh2d(meshes.add(Rectangle::from_size(PLAYER_COLLISION_SIZE))),
+                // MeshMaterial2d(materials.add(Color::Srgba(Srgba {
+                //     red: 255.,
+                //     green: 0.,
+                //     blue: 0.,
+                //     alpha: 0.1,
+                // }))),
                 Transform::from_scale(Vec3::splat(resolution.pixel_ratio))
                     .with_translation(Vec3::new(0.0, -PLAYER_FEET_OFFSET * 0.5, 0.0)),
                 Anchor::Center,
