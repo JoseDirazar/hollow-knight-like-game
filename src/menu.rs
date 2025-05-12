@@ -51,7 +51,7 @@ fn setup_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                         width: Val::Percent(100.0),
                         height: Val::Percent(100.0),
                         align_items: AlignItems::Center,
-                        justify_content: JustifyContent::Center,
+                        justify_content: JustifyContent::SpaceAround,
                         flex_direction: FlexDirection::Column,
                         display: Display::Flex,
                         ..default()
@@ -61,7 +61,7 @@ fn setup_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                 .with_children(|parent| {
                     // Game title
                     parent.spawn((
-                        Text::new("My Awesome Bevy Game"),
+                        Text::new("Platformer Demo"),
                         TextFont {
                             font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                             font_size: 32.0,

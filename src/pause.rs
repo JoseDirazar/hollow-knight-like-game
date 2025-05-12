@@ -29,6 +29,7 @@ fn setup_pause_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                 height: Val::Percent(100.0),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
+
                 ..default()
             },
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
@@ -41,7 +42,9 @@ fn setup_pause_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                         width: Val::Percent(100.0),
                         height: Val::Percent(100.0),
                         align_items: AlignItems::Center,
-                        justify_content: JustifyContent::Center,
+                        justify_content: JustifyContent::SpaceAround,
+                        flex_direction: FlexDirection::Column,
+                        display: Display::Flex,
                         ..default()
                     },
                     BackgroundColor(Color::srgba(0.1, 0.1, 0.1, 0.9)),
