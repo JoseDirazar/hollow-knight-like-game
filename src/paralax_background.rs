@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::game::GameState;
+use crate::{enemy::Enemy, game::GameState, player::Player};
 
 // Plugin for the parallax background system
 pub struct ParallaxPlugin;
@@ -8,20 +8,22 @@ pub struct ParallaxPlugin;
 impl Plugin for ParallaxPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ParallaxSettings>()
+            .init_resource::<ParallaxMonitor>()
             .add_systems(Startup, setup_parallax_background)
-            // .configure_sets(
-            //     Update,
-            //     (
-            //         ParallaxSystems::CameraMovement,
-            //         ParallaxSystems::BackgroundUpdate.after(ParallaxSystems::CameraMovement),
-            //     ),
-            // )
+            .configure_sets(
+                Update,
+                (
+                    ParallaxSystems::CameraMovement,
+                    ParallaxSystems::BackgroundUpdate.after(ParallaxSystems::CameraMovement),
+                ),
+            )
             .add_systems(
                 Update,
                 (
                     camera_follow_player.in_set(ParallaxSystems::CameraMovement),
                     update_parallax_background_recycled.in_set(ParallaxSystems::BackgroundUpdate),
                     update_static_background.in_set(ParallaxSystems::BackgroundUpdate),
+                    monitor_performance,
                 )
                     .run_if(in_state(GameState::Playing)),
             );
@@ -74,31 +76,31 @@ impl Default for ParallaxSettings {
             layer_configurations: vec![
                 LayerConfig {
                     path: "world/levels/1/1.png".to_string(),
-                    speed_factor: 0.1, // Farthest background (nubes) moves very little (5% of camera movement)
+                    speed_factor: 0.01, // Farthest background (nubes) moves very little (5% of camera movement)
                     z_value: -40.0,
                     dimensions: Vec2::new(128., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/2.png".to_string(),
-                    speed_factor: 0.15, // Distant clouds move slightly (10% of camera movement)
+                    speed_factor: 0.02, // Distant clouds move slightly (10% of camera movement)
                     z_value: -30.0,
                     dimensions: Vec2::new(144., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/3.png".to_string(),
-                    speed_factor: 0.20, // Mountains (30% of camera movement)
+                    speed_factor: 0.04, // Mountains (30% of camera movement)
                     z_value: -20.0,
                     dimensions: Vec2::new(160., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/4.png".to_string(),
-                    speed_factor: 0.25, // Forest (50% of camera movement)
+                    speed_factor: 0.1, // Forest (50% of camera movement)
                     z_value: -10.0,
                     dimensions: Vec2::new(320., 240.),
                 },
                 LayerConfig {
                     path: "world/levels/1/5.png".to_string(),
-                    speed_factor: 0.30, // Closest to foreground, moves the most (80% of camera movement)
+                    speed_factor: 0.20, // Closest to foreground, moves the most (80% of camera movement)
                     z_value: -5.0,
                     dimensions: Vec2::new(240., 240.),
                 },
@@ -214,7 +216,11 @@ fn update_parallax_background_recycled(
     camera_query: Query<&Transform, (With<Camera2d>, Without<ParallaxLayer>)>,
     windows: Query<&Window>,
 ) {
-    let window = windows.single();
+    let window = if let Ok(window) = windows.get_single() {
+        window
+    } else {
+        return; // Skip this frame if window is not available
+    };
     let window_width = window.width();
 
     if let Ok(camera_transform) = camera_query.get_single() {
@@ -327,10 +333,15 @@ fn camera_follow_player(
     windows: Query<&Window>,
     keyboard: Res<ButtonInput<KeyCode>>,
 ) {
+    let window = if let Ok(window) = windows.get_single() {
+        window
+    } else {
+        return; // Skip this frame if window is not available
+    };
+
     if let (Ok(mut camera_transform), Ok(player_transform)) =
         (camera_query.get_single_mut(), player_query.get_single())
     {
-        let window = windows.single();
         let window_width = window.width();
         let half_window = window_width / 2.0;
 
@@ -381,6 +392,7 @@ pub fn extend_world(
 #[derive(Default, Resource)]
 pub struct ParallaxMonitor {
     pub player_position: Vec3,
+    pub enemy_position: Vec3,
     pub camera_position: Vec3,
     pub fps: f32,
     pub frame_time: f32,
@@ -393,10 +405,11 @@ pub struct ParallaxMonitor {
 pub fn monitor_performance(
     time: Res<Time>,
     mut monitor: ResMut<ParallaxMonitor>,
-    player_query: Query<&Transform, With<crate::player::Player>>,
+    player_query: Query<&Transform, With<Player>>,
     camera_query: Query<&Transform, With<Camera2d>>,
     parallax_query: Query<&ParallaxLayer>,
     sprite_query: Query<&Visibility>,
+    enemy_query: Query<&Transform, With<Enemy>>,
 ) {
     // Update once per second
     if time.elapsed_secs_f64() - monitor.last_update < 1.0 {
@@ -406,6 +419,10 @@ pub fn monitor_performance(
     // Update monitoring data
     if let Ok(player_transform) = player_query.get_single() {
         monitor.player_position = player_transform.translation;
+    }
+
+    for enemy in enemy_query.iter() {
+        monitor.enemy_position = enemy.translation;
     }
 
     if let Ok(camera_transform) = camera_query.get_single() {
@@ -422,8 +439,12 @@ pub fn monitor_performance(
     monitor.last_update = time.elapsed_secs_f64();
 
     // Print debug info if needed
-    // println!(
-    //     "FPS: {:.2}, Active layers: {}, Player pos: {:.2}, camera_position: {:.2}",
-    //     monitor.fps, monitor.active_layers, monitor.player_position, monitor.camera_position,
-    // );
+    println!(
+        "FPS: {:.2}, Active layers: {}, Player pos: {:.2}, camera_position: {:.2}, Enemy pos: {:.2}",
+        monitor.fps,
+        monitor.active_layers,
+        monitor.player_position,
+        monitor.camera_position,
+        monitor.enemy_position,
+    );
 }

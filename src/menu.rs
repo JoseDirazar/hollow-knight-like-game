@@ -18,7 +18,7 @@ pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Menu), setup_menu.run_if(in_state(GameState::Menu)))
+        app.add_systems(OnEnter(GameState::Menu), setup_menu)
             .add_systems(
                 Update,
                 handle_start_button.run_if(in_state(GameState::Menu)),
@@ -36,6 +36,8 @@ fn setup_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                 height: Val::Percent(100.0),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
+                flex_direction: FlexDirection::Column,
+                display: Display::Flex,
                 ..default()
             },
             BackgroundColor(Color::srgba(0.1, 0.1, 0.1, 1.)),
@@ -50,6 +52,8 @@ fn setup_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                         height: Val::Percent(100.0),
                         align_items: AlignItems::Center,
                         justify_content: JustifyContent::Center,
+                        flex_direction: FlexDirection::Column,
+                        display: Display::Flex,
                         ..default()
                     },
                     BackgroundColor(Color::srgba(0.1, 0.1, 0.1, 0.9)),
@@ -76,6 +80,7 @@ fn setup_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 border: UiRect::all(Val::Px(5.0)),
                                 justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
+                                flex_direction: FlexDirection::Column,
                                 ..default()
                             },
                             BorderColor(Color::BLACK),

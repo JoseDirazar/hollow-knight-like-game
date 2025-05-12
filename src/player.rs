@@ -115,7 +115,7 @@ fn update_attack_hitbox(
         if !is_attacking {
             for (hitbox_entity, parent, _) in hitbox_query.iter() {
                 if parent.get() == entity {
-                    commands.entity(hitbox_entity).despawn_recursive();
+                    commands.entity(hitbox_entity).despawn();
                 }
             }
             continue;
@@ -149,7 +149,10 @@ fn update_attack_hitbox(
                             damage,
                             active: true,
                             size: hitbox_size,
-                            timer: Timer::from_seconds(PLAYER_ATTACK_HITBOX_DURATION, TimerMode::Once),
+                            timer: Timer::from_seconds(
+                                PLAYER_ATTACK_HITBOX_DURATION,
+                                TimerMode::Once,
+                            ),
                         },
                         Transform::from_translation(Vec3::new(offset_x, 0., 0.)),
                         Mesh2d(meshes.add(Rectangle::from_size(hitbox_size))),
@@ -316,9 +319,7 @@ fn can_move(state: &CharacterState) -> bool {
     }
 }
 
-fn update_animations(
-    mut query: Query<(&mut AnimationController, &Physics, &Player)>,
-) {
+fn update_animations(mut query: Query<(&mut AnimationController, &Physics, &Player)>) {
     for (mut animation_controller, physics, player) in &mut query {
         let current_state = animation_controller.get_current_state();
 
@@ -411,8 +412,8 @@ fn setup_player(
                 state: CharacterState::Idle,
                 texture: idle_texture.clone(),
                 atlas_layout: idle_atlas_layout.clone(),
-                frames: 11,
-                fps: 10.0,
+                frames: PLAYER_IDLE_FRAMES,
+                fps: PLAYER_IDLE_FPS,
                 looping: true,
                 ping_pong: true,
             },
@@ -421,8 +422,8 @@ fn setup_player(
                 state: CharacterState::Attacking,
                 texture: attack_texture.clone(),
                 atlas_layout: attack_atlas_layout.clone(),
-                frames: 7,
-                fps: 20.0,
+                frames: PLAYER_ATTACK_FRAMES,
+                fps: PLAYER_ATTACK_FPS,
                 looping: false,
                 ping_pong: false,
             },
@@ -430,8 +431,8 @@ fn setup_player(
                 state: CharacterState::ChargeAttacking,
                 texture: charge_attack_texture.clone(),
                 atlas_layout: charge_attack_attlas_layout.clone(),
-                frames: 7,
-                fps: 12.0,
+                frames: PLAYER_CHARGE_ATTACK_FRAMES,
+                fps: PLAYER_CHARGE_ATTACK_FPS,
                 looping: false,
                 ping_pong: false,
             },
@@ -439,8 +440,8 @@ fn setup_player(
                 state: CharacterState::Running,
                 texture: run_texture.clone(),
                 atlas_layout: run_atlas_layout.clone(),
-                frames: 8,
-                fps: 15.0,
+                frames: PLAYER_RUN_FRAMES,
+                fps: PLAYER_RUN_FPS,
                 looping: true,
                 ping_pong: false,
             },
@@ -449,8 +450,8 @@ fn setup_player(
                 state: CharacterState::Jumping,
                 texture: jump_texture.clone(),
                 atlas_layout: jump_atlas_layout.clone(),
-                frames: 3,
-                fps: 18.0,
+                frames: PLAYER_JUMP_FRAMES,
+                fps: PLAYER_JUMP_FPS,
                 looping: true,
                 ping_pong: false,
             },
@@ -459,8 +460,8 @@ fn setup_player(
                 state: CharacterState::Hurt,
                 texture: hurt_texture.clone(),
                 atlas_layout: hurt_atlas_layout.clone(),
-                frames: 4,
-                fps: 10.0,
+                frames: PLAYER_HURT_FRAMES,
+                fps: PLAYER_HURT_FPS,
                 looping: false,
                 ping_pong: false,
             },
@@ -469,8 +470,8 @@ fn setup_player(
                 state: CharacterState::Falling,
                 texture: fall_texture.clone(),
                 atlas_layout: fall_atlas_layout.clone(),
-                frames: 3,
-                fps: 10.0,
+                frames: PLAYER_FALL_FRAMES,
+                fps: PLAYER_FALL_FPS,
                 looping: true,
                 ping_pong: false,
             },
@@ -481,7 +482,7 @@ fn setup_player(
     let initial_animation = CurrentAnimation {
         current_frame: 0,
         timer: Timer::from_seconds(0.01, TimerMode::Repeating),
-        total_frames: 11,
+        total_frames: PLAYER_IDLE_FRAMES,
         looping: true,
         reverse_direction: false,
     };
